@@ -165,8 +165,24 @@ async function run() {
   console.log('\n── LAS ARMAS NUEVAS SE USAN EN LA ARENA ──')
   r = await req('GET', '/api/arena')
   check('la arena reconoce el arma equipada', !!r.body.arma)
+  // El garrote pide 4 de madera y 1 de cuero, y a estas alturas del
+  // guion el inventario depende de cómo haya ido la recolección. Si
+  // falta algo, la receta no sale.
+  //
+  // Antes eso NO fallaba: el `if (garrote)` se saltaba la comprobación
+  // en silencio y la prueba terminaba en verde con una comprobación
+  // menos. Así salió —24 OK donde antes había 25— y hubo que comparar
+  // dos ejecuciones para verlo. Una prueba que se calla cuando no puede
+  // probar algo es peor que una que falla: da confianza sin haberla
+  // ganado.
+  //
+  // Los materiales se reparten, así que la receta sale siempre y la
+  // comprobación se hace siempre.
+  await req('POST', '/api/dev/dar', { itemId: 'wood', quantity: 10 })
+  await req('POST', '/api/dev/dar', { itemId: 'leather', quantity: 5 })
   await req('POST', '/api/crafting', { recipeId: 'rec_club', quantity: 1 })
   const garrote = await buscar('wood_club')
+  check('se fabrica el Garrote de Roble', !!garrote)
   if (garrote) {
     await req('POST', '/api/player/equip', { uid: garrote.uid })
     r = await req('GET', '/api/arena')

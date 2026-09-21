@@ -537,6 +537,35 @@ La regla para lo que venga: si una prueba observa algo que el servidor
 decide con un dado, o insiste hasta verlo con un presupuesto medido, o
 no lo exige.
 
+**Y hay una variante peor: la comprobación que desaparece.** En
+`test-contenido.js`:
+
+```js
+const garrote = await buscar('wood_club')
+if (garrote) {
+  check('cambiar de arma cambia lo que ve la arena', …)
+}
+```
+
+El garrote pide 4 de madera y 1 de cuero, y a esas alturas el inventario
+depende de cómo haya ido la recolección. Si falta algo, la receta no
+sale, el `if` no entra y **la prueba termina en verde con una
+comprobación menos**. Salió a la luz porque un día dio 24 OK donde otro
+día daba 25, y hubo que comparar dos ejecuciones línea a línea para ver
+cuál faltaba.
+
+Una prueba que se calla cuando no puede probar algo es peor que una que
+falla: da confianza sin haberla ganado, y no hay nada en el resumen que
+lo delate. El arreglo es el mismo de siempre: garantizar la condición
+—aquí, repartir los materiales— y comprobar SIEMPRE.
+
+Quedan otros cuatro `if` alrededor de comprobaciones en
+`test-revision.js`, `test-turnos.js` y `test-turnos-pantalla.js`. Los
+miré y los de turnos son legítimos —el fallo del ataque es una rama
+esperada y el test la contempla aparte—, pero conviene tenerlos
+fichados: el recuento de comprobaciones de cada archivo es un dato que
+nadie vigila.
+
 ### 5.9 Lo que NO es un problema (comprobado y descartado)
 
 Para que no se vuelva a mirar:

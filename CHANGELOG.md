@@ -4,6 +4,29 @@ Cada versión con lo que la motivó. Los detalles completos están en `docs/CAMB
 
 ## v32 (en curso) — El mundo deja de pelear consigo mismo
 
+### Una prueba que se callaba en vez de fallar
+
+`test-contenido.js` dio 24 comprobaciones donde el día anterior daba 25.
+Ninguna falló: una desapareció.
+
+```js
+const garrote = await buscar('wood_club')
+if (garrote) {
+  check('cambiar de arma cambia lo que ve la arena', …)
+}
+```
+
+El garrote pide 4 de madera y 1 de cuero, y a esas alturas del guion el
+inventario depende de cómo haya ido la recolección. Si falta algo, la
+receta no sale, el `if` no entra y la prueba termina en verde habiendo
+comprobado una cosa menos. Hubo que comparar dos ejecuciones línea a
+línea para ver cuál era.
+
+Una prueba que se calla cuando no puede probar algo es peor que una que
+falla: da confianza sin haberla ganado. Ahora se reparten los materiales
+y la comprobación se hace siempre, con una más que verifica que la
+receta salió.
+
 ### El mundo deja de ser de un jugador
 
 El mundo 2D era estrictamente de una persona. Dos jugadores en el mismo
