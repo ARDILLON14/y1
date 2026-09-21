@@ -566,6 +566,11 @@ async function handleAPI(req, res, pathname, query) {
   // El huerto de más abajo sigue igual: esto va en paralelo (§7).
   if (pathname === '/api/recursos' && req.method === 'GET') {
     return json(res, {
+      // El espacio de coordenadas viaja con la lista: quien dibuje los
+      // nodos convierte a su pantalla sin tener que suponer la escala.
+      espacio: MUNDO_RECURSOS,
+      alcance: ALCANCE_RECURSO,
+      zonaActual: zonaCanonica(char.zonaActual || 'pueblo'),
       nodos: listarRecursos(char, query.zona || null),
       herramienta: (() => {
         const h = herramientaEquipada(char)
@@ -585,7 +590,7 @@ async function handleAPI(req, res, pathname, query) {
   if (pathname === '/api/recursos/golpear' && req.method === 'POST') {
     // Un golpe por petición. El límite corta el clic automático.
     if (!rateLimit('golpe:' + char.id, 180, 60_000)) return fail(res, 'Demasiado rápido', 429)
-    const r = golpearRecurso(char, body.nodoId)
+    const r = golpearRecurso(char, body.nodoId, body.pos)
     if (r.error) return fail(res, r.error, r.code)
     return reply(r)
   }

@@ -12,6 +12,7 @@ Fecha: 2026-09-21 · Base auditada: commit de importación del zip `criptomundo-
 > - §0 `test-misiones-mundo.js` intermitente — **STEP 1**
 > - §5.6 cada prueba dejaba su servidor vivo — **STEP 1**
 > - §5.8 `test-turnos.js` intermitente — **STEP 1**
+> - §3.1 la recolección física no tenía cliente — **STEP 2**
 
 Este documento es el resultado de la FASE 0. **No se ha modificado ni una
 línea de gameplay.** Todo lo que sigue está comprobado contra el código o
@@ -223,6 +224,13 @@ salen en el cruce, pero son de infraestructura o de la fase Web3 que está
 deliberadamente aparcada. No cuentan.)
 
 ### 3.1 La recolección física ya existe entera — y nadie la ve
+
+> ✅ **Resuelto en el STEP 2.** Los nodos se dibujan en el mapa y se
+> talan con ESPACIO. El servidor gana la validación de distancia, la de
+> zona actual y el enfriamiento por golpe que faltaban. Lo cubre
+> `test-mundo-recursos.js`, que ejecuta el módulo de la página contra el
+> servidor. La distancia solo será a prueba de trampas cuando el mundo
+> lleve la posición en el servidor (§3.2).
 
 `src/server/48-recursos-mundo.js` (405 líneas) implementa **exactamente** lo
 que pide la FASE 10:

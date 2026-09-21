@@ -561,6 +561,11 @@ class WorldScene extends Phaser.Scene {
       }
     })
 
+    // Los recursos de la zona: árboles y vetas de verdad, con su vida y
+    // su reloj. Los pide el servidor, que es quien sabe cuáles siguen
+    // en pie para ESTE jugador.
+    if (typeof cargarRecursos === 'function') cargarRecursos(this)
+
     // Ambient particles for zone
     if (zoneKey === 'ruinas') this.startAmbientParticles(0xA335EE)
     else if (zoneKey === 'bosque') this.startAmbientParticles(0x1A8B3A)
@@ -703,6 +708,9 @@ class WorldScene extends Phaser.Scene {
       md.label.setPosition(mt.x, mt.y - 18)
     })
 
+    // Recursos: qué árbol o veta tienes delante
+    if (typeof actualizarRecursos === 'function') actualizarRecursos(this)
+
     // NPC proximity
     this.npcData.forEach((npc, i) => {
       const dist = Phaser.Math.Distance.Between(this.px, this.py, npc.x, npc.worldY)
@@ -712,7 +720,13 @@ class WorldScene extends Phaser.Scene {
     })
 
     // Keyboard shortcuts
-    if (Phaser.Input.Keyboard.JustDown(this.keySpace)) triggerAction('attack')
+    // ESPACIO delante de un árbol o una veta es talar o picar; en
+    // cualquier otro sitio sigue siendo atacar. Un hacha tiene que
+    // sentirse como una herramienta, no como una espada más.
+    if (Phaser.Input.Keyboard.JustDown(this.keySpace)) {
+      if (typeof hayNodoDelante === 'function' && hayNodoDelante()) golpearNodoCercano(this)
+      else triggerAction('attack')
+    }
     if (Phaser.Input.Keyboard.JustDown(this.keyQ))     triggerAction('potion')
     if (Phaser.Input.Keyboard.JustDown(this.keyR))     triggerAction('magic')
     if (Phaser.Input.Keyboard.JustDown(this.keyM))     openModule('map')

@@ -183,18 +183,45 @@ const TIPOS_RECURSO = {
     suelta: [['gold_ore', 1, 3, 1], ['mithril_ore', 1, 1, 0.1]], reapareceMs: 240_000 },
 }
 
+// ── Dónde están los nodos, en coordenadas del mundo ────────────────
+//
+// El espacio va declarado y viaja con la lista. Antes las posiciones se
+// repartían sobre un rectángulo implícito de 900×520 que no era el de
+// ninguna pantalla, así que quien las dibujara tenía que adivinar la
+// escala. Diciéndolo, el cliente convierte y no hay nada que suponer.
+//
+// No es dato guardado: los nodos se generan al arrancar y lo único que
+// se persiste del jugador es la vida y el reloj de reaparición, con la
+// clave `tipoId#i`. Cambiar el reparto no toca ninguna partida.
+const MUNDO_RECURSOS = { ancho: 1800, alto: 1200 }
+
+// A cuánto hay que estar para poder golpear, en ese mismo espacio.
+const ALCANCE_RECURSO = 90
+
+// Entre golpe y golpe al MISMO nodo. Un hacha no da dos hachazos en el
+// mismo instante, y esto lo hace cierto también para quien mande las
+// peticiones a mano.
+const ESPERA_GOLPE_MS = 450
+
 // Instancias colocadas en el mundo. Se generan por zona para que haya
 // varios de cada cosa y no una sola piedra peleada por todos.
+//
+// El reparto es determinista a propósito: el servidor valida la
+// distancia contra estas coordenadas, así que tienen que ser las mismas
+// para todos y no moverse entre arranques.
 const NODOS_RECURSO = {}
 for (const [tipoId, t] of Object.entries(TIPOS_RECURSO)) {
   const cuantos = t.nivel <= 1 ? 5 : t.nivel === 2 ? 4 : 3
+  const margen = 140
   for (let i = 0; i < cuantos; i++) {
     const id = `${tipoId}#${i}`
-    // Posiciones repartidas: el cliente las usa para dibujarlos.
+    // Dos multiplicadores primos distintos para que los nodos de un
+    // mismo tipo no salgan en fila ni se apilen unos sobre otros.
+    const semilla = i * 977 + tipoId.length * 613 + tipoId.charCodeAt(0) * 149
     NODOS_RECURSO[id] = {
       id, tipoId, tipo: t, zona: t.zona,
-      x: 220 + ((i * 173 + tipoId.length * 61) % 900),
-      y: 180 + ((i * 227 + tipoId.length * 43) % 520),
+      x: margen + (semilla % (MUNDO_RECURSOS.ancho - margen * 2)),
+      y: margen + ((semilla * 7 + i * 331) % (MUNDO_RECURSOS.alto - margen * 2)),
     }
   }
 }
@@ -254,9 +281,20 @@ function listarRecursos(char, zona) {
   return fuera
 }
 
-// El golpe: una petición, un golpe. Es lo único que puede pedir el
-// cliente, y todo lo demás se decide aquí.
-function golpearRecurso(char, nodoId) {
+// El golpe: una petición, un golpe. Lo único que el cliente puede pedir
+// es "golpeo este nodo, y estoy aquí". Todo lo demás se decide aquí.
+//
+// SOBRE LA POSICIÓN QUE MANDA EL CLIENTE
+// La zona sí es autoritativa: la guarda el servidor y la cambia
+// /api/world/explore, así que "estar en el bosque" no se puede fingir.
+// Las coordenadas dentro de la zona NO lo son todavía, porque el mundo
+// no simula el movimiento en el servidor —eso es la fase de multijugador
+// (§3.2 de la auditoría)—. O sea que este control hace que el juego
+// funcione como debe: hay que andar hasta el árbol para talarlo. No
+// impide que alguien con la consola abierta mienta sobre dónde está.
+// Cuando el servidor lleve la posición de verdad, esta función cambia
+// en una línea: la posición se lee del mundo en vez del cuerpo.
+function golpearRecurso(char, nodoId, posicion) {
   const n = NODOS_RECURSO[nodoId]
   if (!n) return { error: 'Ahí no hay nada que golpear', code: 404 }
 
@@ -264,10 +302,33 @@ function golpearRecurso(char, nodoId) {
   if (!char.zonesVisited.includes(n.zona)) {
     return { error: `Primero tienes que llegar a ${ZONES[n.zona].name}`, code: 403 }
   }
+  // Haber visitado la zona alguna vez no basta: hay que ESTAR en ella.
+  // Antes se podía talar el bosque desde el pueblo.
+  const aqui = zonaCanonica(char.zonaActual || 'pueblo')
+  if (aqui !== n.zona) {
+    return { error: `Eso está en ${ZONES[n.zona].name} y tú no`, code: 403 }
+  }
+
+  // La posición es obligatoria. Si fuera opcional, no mandarla sería la
+  // forma trivial de saltarse el control, y un control que se esquiva
+  // omitiendo un campo es peor que no tenerlo: engaña a quien lo lee.
+  const px = Number(posicion && posicion.x), py = Number(posicion && posicion.y)
+  if (!Number.isFinite(px) || !Number.isFinite(py)) {
+    return { error: 'Falta decir dónde estás', code: 400 }
+  }
+  const d = Math.hypot(px - n.x, py - n.y)
+  if (d > ALCANCE_RECURSO) {
+    return { error: `Estás demasiado lejos de ${n.tipo.nombre}: acércate`, code: 403 }
+  }
 
   const e = estadoNodo(char, nodoId)
   if (e.vida <= 0) {
     return { error: `Ya lo has agotado. Vuelve en ${Math.ceil((e.listoEn - now()) / 1000)}s`, code: 429 }
+  }
+  // Un golpe cada vez. El límite por minuto de la ruta corta el clic
+  // automático en general; esto corta la ráfaga sobre un solo nodo.
+  if (now() < (e.proxGolpe || 0)) {
+    return { error: 'Todavía estás recuperando el golpe', code: 429 }
   }
 
   const h = herramientaEquipada(char)
@@ -291,6 +352,7 @@ function golpearRecurso(char, nodoId) {
   const st = effectiveStats(char)
   const daño = Math.max(1, h.poder + Math.floor(st.strength / 12))
   e.vida = Math.max(0, e.vida - daño)
+  e.proxGolpe = now() + ESPERA_GOLPE_MS
   it.durabilidad -= 1
 
   let rota = false

@@ -35,6 +35,18 @@ function req(method, p, body) {
     r.end()
   })
 }
+const sleep = ms => new Promise(r => setTimeout(r, ms))
+
+// Golpear un nodo como lo hace el juego: de pie junto a él y esperando
+// a recuperar el golpe. El servidor exige las dos cosas desde el §10:
+// la posición porque hay que andar hasta el árbol, y la espera porque
+// un hacha no da dos hachazos en el mismo instante.
+async function golpear(nodo, opciones) {
+  const o = opciones || {}
+  if (!o.sinEsperar) await sleep(470)
+  const pos = o.pos || { x: nodo.x, y: nodo.y }
+  return req('POST', '/api/recursos/golpear', { nodoId: nodo.id || nodo, pos })
+}
 const inv = async () => (await req('GET', '/api/inventory')).body
 const cuenta = async itemId => {
   const d = await inv()
@@ -59,11 +71,18 @@ async function run() {
   console.log('\n── §7 RECOLECCIÓN FÍSICA ──')
   let r = await req('GET', '/api/recursos?zona=forest')
   check('el mundo tiene nodos de recurso', (r.body.nodos || []).length > 0, `${(r.body.nodos || []).length}`)
+  // Sin esto, quien dibuje los nodos tiene que adivinar la escala.
+  check('la lista dice en qué espacio están las coordenadas',
+    r.body.espacio && r.body.espacio.ancho > 0 && r.body.espacio.alto > 0, JSON.stringify(r.body.espacio))
+  check('y a qué distancia se puede golpear', r.body.alcance > 0, String(r.body.alcance))
+  check('los nodos traen posición', (r.body.nodos || []).every(n2 => Number.isFinite(n2.x) && Number.isFinite(n2.y)))
+  check('y caben en el espacio declarado',
+    (r.body.nodos || []).every(n2 => n2.x >= 0 && n2.x <= r.body.espacio.ancho && n2.y >= 0 && n2.y <= r.body.espacio.alto))
   const arbol = (r.body.nodos || []).find(n => n.util === 'hacha' && n.nivel === 1)
   const roca = (r.body.nodos || []).find(n => n.util === 'pico' && n.nivel === 1)
   check('hay árboles y rocas en el bosque', !!arbol && !!roca)
 
-  r = await req('POST', '/api/recursos/golpear', { nodoId: arbol.id })
+  r = await golpear(arbol)
   check('sin nada equipado NO se puede talar', r.status === 400 && /hacha/i.test(r.body.error || ''),
     r.raw.slice(0, 90))
   const inicial = (await inv()).inventory
@@ -121,7 +140,7 @@ async function run() {
   // ══ §7 TALAR DE VERDAD ════════════════════════════════════════════
   console.log('\n── §7 TALAR: golpe a golpe ──')
   const maderaAntes = await cuenta('wood')
-  r = await req('POST', '/api/recursos/golpear', { nodoId: arbol.id })
+  r = await golpear(arbol)
   check('¿puedo golpear un árbol?', r.status === 200, r.raw.slice(0, 100))
   const vida1 = r.body.vida, vidaMax = r.body.vidaMax
   check('el árbol recibe daño', vida1 < vidaMax, `${vidaMax} → ${vida1}`)
@@ -131,7 +150,7 @@ async function run() {
 
   let golpes = 1, caido = null
   while (golpes < 60) {
-    r = await req('POST', '/api/recursos/golpear', { nodoId: arbol.id })
+    r = await golpear(arbol)
     golpes++
     if (r.body.agotado) { caido = r.body; break }
     if (r.status !== 200) break
@@ -144,12 +163,12 @@ async function run() {
     `${maderaAntes} → ${maderaDesp}`)
   check('talar da XP', caido && caido.xp > 0, caido && String(caido.xp))
 
-  r = await req('POST', '/api/recursos/golpear', { nodoId: arbol.id })
+  r = await golpear(arbol)
   check('un árbol agotado no se puede volver a talar', r.status === 429, r.raw.slice(0, 80))
 
   // ══ §9 MINERÍA: el hacha no sirve ═════════════════════════════════
   console.log('\n── §9 MINERÍA ──')
-  r = await req('POST', '/api/recursos/golpear', { nodoId: roca.id })
+  r = await golpear(roca)
   check('con el hacha NO se pica piedra', r.status === 400 && /pico/i.test(r.body.error || ''),
     r.raw.slice(0, 90))
 
@@ -160,7 +179,7 @@ async function run() {
   const piedraAntes = await cuenta('stone')
   let rocaCaida = null
   for (let i = 0; i < 80; i++) {
-    r = await req('POST', '/api/recursos/golpear', { nodoId: roca.id })
+    r = await golpear(roca)
     if (r.status !== 200) break
     if (r.body.agotado) { rocaCaida = r.body; break }
   }
@@ -180,7 +199,7 @@ async function run() {
   for (const otra of rocas) {
     if (await cuenta('stone') >= 4) break
     for (let i = 0; i < 80; i++) {
-      const g = await req('POST', '/api/recursos/golpear', { nodoId: otra.id })
+      const g = await golpear(otra)
       if (g.status !== 200 || g.body.agotado) break
     }
   }
@@ -191,9 +210,45 @@ async function run() {
   check('con la piedra minada se forja una cabeza nueva', r.status === 200 && r.body.made > 0,
     r.raw.slice(0, 80))
 
-  r = await req('POST', '/api/recursos/golpear', { nodoId: 'veta_plata#0' })
+  // La plata está en las MINAS. Antes esta comprobación se hacía desde
+  // el bosque y pasaba en verde por el motivo equivocado: fallaba por
+  // estar en otra zona, no por llevar un pico flojo. Se viaja primero,
+  // y así lo que se mide es de verdad la progresión de herramienta.
+  await req('POST', '/api/world/explore', { zoneId: 'mines' })
+  const enMinas = (await req('GET', '/api/recursos?zona=mines')).body.nodos || []
+  const plata = enMinas.find(n2 => n2.tipo === 'veta_plata')
+  check('las minas tienen filones de plata', !!plata, JSON.stringify(enMinas.map(n2 => n2.tipo)))
+  r = await golpear(plata)
   check('un pico básico NO saca plata (progresión real)',
-    r.status === 403 || r.status === 400, r.raw.slice(0, 90))
+    r.status === 403 && /básica|nivel/i.test(r.body.error || ''), r.raw.slice(0, 120))
+
+  // Volver al bosque para lo que queda
+  await req('POST', '/api/world/explore', { zoneId: 'forest' })
+
+  // ══ §10 NI DE LEJOS NI A RÁFAGAS ══════════════════════════════════
+  console.log('\n── §10 HAY QUE ESTAR DELANTE, Y UN GOLPE CADA VEZ ──')
+  // Una roca entera del bosque: es de nivel 1, así que el pico de
+  // fábrica sirve y lo que se mide es el control, no la progresión.
+  const entera = (await req('GET', '/api/recursos?zona=forest')).body.nodos
+    .find(n2 => n2.util === 'pico' && n2.nivel === 1 && !n2.agotado)
+  check('queda alguna roca entera en el bosque', !!entera)
+
+  r = await golpear(entera, { pos: { x: entera.x + 900, y: entera.y + 700 } })
+  check('desde lejos no se puede picar', r.status === 403 && /lejos/i.test(r.body.error || ''),
+    r.raw.slice(0, 100))
+
+  r = await req('POST', '/api/recursos/golpear', { nodoId: entera.id })
+  check('y tampoco sin decir dónde estás', r.status === 400, r.raw.slice(0, 100))
+
+  // Un golpe bueno, y otro inmediato: el segundo tiene que rebotar.
+  const deCerca = await golpear(entera)
+  check('de cerca sí se puede picar', deCerca.status === 200, deCerca.raw.slice(0, 100))
+  const seguido = await golpear(entera, { sinEsperar: true })
+  check('dos golpes seguidos al mismo nodo NO cuelan', seguido.status === 429,
+    seguido.raw.slice(0, 100))
+  const trasEsperar = await golpear(entera)
+  check('pero tras esperar sí', trasEsperar.status === 200 || trasEsperar.body.agotado,
+    trasEsperar.raw.slice(0, 100))
 
   // ══ §11 RAREZA FUNCIONAL ══════════════════════════════════════════
   console.log('\n── §11 RAREZA FUNCIONAL, NO SOLO COLOR ──')
@@ -247,11 +302,18 @@ async function run() {
 
   // ══ NO SE PUEDE HACER TRAMPA ══════════════════════════════════════
   console.log('\n── NO SE PUEDE HACER TRAMPA ──')
-  r = await req('POST', '/api/recursos/golpear', { nodoId: 'arbol_inventado#9' })
+  r = await req('POST', '/api/recursos/golpear', { nodoId: 'arbol_inventado#9', pos: { x: 0, y: 0 } })
   check('un nodo inventado se rechaza', r.status === 404)
-  r = await req('POST', '/api/recursos/golpear', { nodoId: 'arbol_sombrio#0' })
+  r = await req('POST', '/api/recursos/golpear', { nodoId: 'arbol_sombrio#0', pos: { x: 0, y: 0 } })
   check('no se puede picar en una zona a la que no has llegado',
     r.status === 403 || r.status === 400, r.raw.slice(0, 80))
+  // Haber estado alguna vez no basta: hay que estar AHORA. Antes se
+  // podía talar el bosque entero desde el banco del pueblo.
+  const arbolBosque = (await req('GET', '/api/recursos?zona=forest')).body.nodos[0]
+  await req('POST', '/api/world/explore', { zoneId: 'pueblo' })
+  r = await golpear(arbolBosque)
+  check('ni se tala el bosque desde el pueblo', r.status === 403 && /y tú no/i.test(r.body.error || ''),
+    r.raw.slice(0, 100))
 
   console.log(`\n══════════════════════════════════════════════`)
   console.log(`  ${pass} OK · ${failed} fallidas`)

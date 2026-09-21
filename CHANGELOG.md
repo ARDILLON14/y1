@@ -4,6 +4,62 @@ Cada versión con lo que la motivó. Los detalles completos están en `docs/CAMB
 
 ## v32 (en curso) — El mundo deja de pelear consigo mismo
 
+### Los recursos del mundo, por fin en el mundo
+
+El sistema de recolección física llevaba versiones entero y probado en
+el servidor: árboles y vetas con vida propia, herramienta requerida,
+nivel mínimo de herramienta, durabilidad que baja por golpe, botín por
+probabilidad y reloj de reaparición. Cuarenta y siete comprobaciones en
+verde. Y no lo llamaba NADIE: `/api/recursos` y `/api/recursos/golpear`
+no aparecían en ninguna pantalla. Hasta las coordenadas de cada nodo
+venían con un comentario que decía que el cliente las usaba para
+dibujarlos.
+
+Mientras tanto, la única forma de conseguir madera era entrar al bosque,
+abrir el huerto y pulsar "reclamar". El recurso aparecía de la nada.
+
+Ahora los árboles y las vetas están en el mapa. Te acercas, y si llevas
+el hacha puesta, ESPACIO tala. El nodo se sacude, salta el número del
+golpe, vuelan astillas, la barra de vida baja y cuando cae la madera
+entra en el inventario de verdad. Si no llevas herramienta, o llevas un
+pico donde hace falta un hacha, o tu pico es demasiado básico para esa
+veta, el rótulo encima del nodo te lo dice antes de que pulses.
+
+El huerto antiguo no se toca: sigue funcionando igual, en paralelo.
+
+**Lo que faltaba en el servidor.** La auditoría había anotado tres
+agujeros en `golpearRecurso()` y se cierran los tres:
+
+- **Distancia.** Antes se podía golpear cualquier nodo desde cualquier
+  sitio. Ahora hay que estar delante. El espacio de coordenadas viaja
+  con la lista de nodos, así que el cliente convierte a su pantalla sin
+  suponer ninguna escala, y la posición es obligatoria: si fuera
+  opcional, no mandarla sería la forma trivial de saltarse el control.
+- **Estar en la zona, no haberla visitado.** La comprobación miraba
+  `zonesVisited`, o sea haber estado alguna vez. Se podía talar el
+  bosque entero desde el banco del pueblo. Ahora hace falta estar allí,
+  y eso sí lo guarda el servidor.
+- **Un golpe cada vez.** Había un límite por minuto en la ruta, que
+  corta el clic automático en general. Faltaba el enfriamiento entre
+  golpes al MISMO nodo, que es lo que hace que un hacha no dé dos
+  hachazos en el mismo instante.
+
+**Lo que NO se arregla todavía, y conviene decirlo.** La zona es
+autoritativa, pero las coordenadas dentro de ella las manda el cliente,
+porque el mundo no simula el movimiento en el servidor. O sea que el
+control hace que el juego funcione como debe —hay que andar hasta el
+árbol—, pero no impide que alguien con la consola abierta mienta sobre
+dónde está. Eso se cierra con la fase de multijugador, y cuando llegue
+esta función cambia en una línea: la posición se lee del mundo en vez
+del cuerpo de la petición. Queda escrito en el código y en la auditoría.
+
+**Y una comprobación que pasaba por el motivo equivocado.**
+`test-recursos.js` verificaba que un pico básico no saca plata... desde
+el bosque. Fallaba por estar en otra zona, no por llevar un pico flojo.
+Ahora se viaja a las minas primero, y lo que se mide es de verdad la
+progresión de herramienta.
+
+
 Después de la auditoría completa (`docs/AUDITORIA_V31.md`), el primer paso.
 
 ### El mapa resolvía el combate en el navegador
