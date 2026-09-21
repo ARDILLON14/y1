@@ -4,6 +4,25 @@ Cada versión con lo que la motivó. Los detalles completos están en `docs/CAMB
 
 ## v32 (en curso) — El mundo deja de pelear consigo mismo
 
+### Una tercera prueba intermitente, y un barrido para cerrar el asunto
+
+`test-contenido.js` fabricaba una Poción de Velocidad y daba por hecho
+que salía. La receta tiene un 95% de éxito y los materiales se gastan
+aunque falle, así que una de cada veinte ejecuciones se quedaba sin
+poción y la prueba reventaba buscando el identificador de algo que no
+existía.
+
+Van tres, y las tres tienen la misma forma: **una prueba que observa un
+suceso probabilístico una sola vez.** El botín de un combate, el crítico
+de un golpe, el éxito de una receta.
+
+Así que en vez de arreglar esta y esperar a la siguiente, hice un
+barrido. De las veintiuna recetas que pueden fallar solo dos aparecen en
+pruebas, y la otra solo se usa para comprobar un rechazo por nivel. Los
+drops garantizados de los nodos llevan probabilidad 1. `test-turnos.js`
+observa el crítico y el fallo pero no los exige. No debería quedar
+ninguno más de este tipo.
+
 ### Los recursos del mundo, por fin en el mundo
 
 El sistema de recolección física llevaba versiones entero y probado en

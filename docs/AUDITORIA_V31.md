@@ -11,7 +11,8 @@ Fecha: 2026-09-21 · Base auditada: commit de importación del zip `criptomundo-
 > - §2.1 combate simulado en el cliente del mundo 2D — **STEP 1**
 > - §0 `test-misiones-mundo.js` intermitente — **STEP 1**
 > - §5.6 cada prueba dejaba su servidor vivo — **STEP 1**
-> - §5.8 `test-turnos.js` intermitente — **STEP 1**
+> - §5.8 pruebas intermitentes (`test-misiones-mundo`, `test-turnos`,
+>   `test-contenido`) — **STEP 1 y STEP 2**
 > - §3.1 la recolección física no tenía cliente — **STEP 2**
 
 Este documento es el resultado de la FASE 0. **No se ha modificado ni una
@@ -432,7 +433,7 @@ El registro está limitado a 20 cuentas por hora y por IP
 `127.0.0.1` se lo comen entre todos y empiezan a fallar con `429`. Es
 correcto que el límite exista; lo que falta es que las pruebas lo sepan.
 
-### 5.8 `test-turnos.js` también era intermitente
+### 5.8 Las pruebas intermitentes eran un patrón, no un caso suelto
 
 > ✅ **Resuelto en el STEP 1.**
 
@@ -457,6 +458,29 @@ fallo baja a cerca del 1%.
 
 Es el mismo patrón que §0: una prueba cuyo presupuesto de observación se
 quedó corto cuando el balance cambió debajo.
+
+**Y salió un tercero.** `test-contenido.js` fabricaba una Poción de
+Velocidad y daba por hecho que salía. La receta tiene un 95% de éxito y
+los materiales se gastan aunque falle, así que una de cada veinte
+ejecuciones se quedaba sin poción y la prueba reventaba con un
+`TypeError` buscando el identificador de algo que no existía.
+
+Los tres comparten la misma forma: **una prueba que observa un suceso
+probabilístico una sola vez.** El botín de un combate, el crítico de un
+golpe, el éxito de una receta. Mientras el margen fue holgado no se
+notó; en cuanto el balance se movió debajo, empezaron a caer.
+
+Hice un barrido buscando más. De las veintiuna recetas que pueden
+fallar, solo dos aparecen en pruebas: `rec_spd`, ya arreglada, y
+`rec_chest`, que solo se usa para comprobar que se rechaza por nivel, así
+que su probabilidad nunca entra en juego. Los drops garantizados de los
+nodos de recurso llevan probabilidad 1. Y `test-turnos.js` observa el
+crítico, el fallo y el veneno pero no los exige. El barrido queda
+limpio: no debería quedar ninguno más de este tipo.
+
+La regla para lo que venga: si una prueba observa algo que el servidor
+decide con un dado, o insiste hasta verlo con un presupuesto medido, o
+no lo exige.
 
 ### 5.9 Lo que NO es un problema (comprobado y descartado)
 

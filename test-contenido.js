@@ -90,8 +90,27 @@ async function run() {
 
   await req('POST', '/api/gather', { nodoId: 'rio' })
   await req('POST', '/api/gather', { nodoId: 'colmena' })
-  r = await req('POST', '/api/crafting', { recipeId: 'rec_spd', quantity: 1 })
-  check('se fabrica la Poción de Velocidad', r.status === 200 && r.body.made > 0, JSON.stringify(r.body).slice(0, 70))
+
+  // La receta tiene un 95% de éxito y los materiales se gastan aunque
+  // falle. Fabricando UNA vez, una de cada veinte ejecuciones se
+  // quedaba sin poción, y la línea siguiente reventaba con un
+  // TypeError buscando el uid de algo que no existía. Lo que esta
+  // sección quiere comprobar es que la poción HACE EFECTO, no que el
+  // alquimista no falle nunca.
+  //
+  // Se reparten ingredientes de sobra y se insiste hasta tenerla: con
+  // ocho intentos la probabilidad de quedarse sin ella es de 4 entre
+  // cien mil millones. El crafteo real se sigue ejercitando igual.
+  for (const ing of ['honey', 'water', 'herb']) {
+    await req('POST', '/api/dev/dar', { itemId: ing, quantity: 20 })
+  }
+  let intentos = 0
+  do {
+    r = await req('POST', '/api/crafting', { recipeId: 'rec_spd', quantity: 1 })
+    intentos++
+  } while (r.status === 200 && r.body.made === 0 && intentos < 8)
+  check('se fabrica la Poción de Velocidad', r.status === 200 && r.body.made > 0,
+    intentos + ' intento(s) · ' + JSON.stringify(r.body).slice(0, 70))
 
   const agiAntes = (await inv()).stats.agility
   const pocion = await buscar('potion_spd')
