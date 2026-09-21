@@ -20,6 +20,7 @@
  */
 const fs = require('fs')
 const path = require('path')
+const vm = require('vm')
 
 const ROOT = __dirname
 const SRC = path.join(ROOT, 'src')
@@ -117,6 +118,35 @@ function comprobarVersion(out) {
   }
 }
 
+// El archivo generado TIENE que parsear.
+//
+// Esto faltaba, y el hueco se nota cuando lo pisas: un bloque pegado
+// dentro de un literal de objeto dejó `criptomundo.js` sin parsear, y
+// `node build.js --check` contestó "está al día" tan tranquilo, porque
+// solo comparaba texto contra src/. El ritual que documenta el proyecto
+// —compilar, comprobar, pasar pruebas— daba dos pasos en verde sobre un
+// archivo que Node ni siquiera podía cargar.
+//
+// `new vm.Script()` compila sin ejecutar nada, así que es instantáneo y
+// no arranca el servidor.
+function comprobarSintaxis(out) {
+  try {
+    new vm.Script(out, { filename: 'criptomundo.js' })
+  } catch (e) {
+    console.error('❌ El archivo generado no parsea: ' + e.message)
+    const n = Number((/criptomundo\.js:(\d+)/.exec(String(e.stack)) || [])[1])
+    if (n) {
+      // Con 25.000 líneas, el número a secas no sirve de nada. Se
+      // enseña el trozo para que se vea dónde cae.
+      const lineas = out.split('\n')
+      for (let i = Math.max(0, n - 3); i < Math.min(lineas.length, n + 2); i++) {
+        console.error(`   ${i + 1 === n ? '→' : ' '} ${i + 1}  ${lineas[i]}`)
+      }
+    }
+    process.exit(1)
+  }
+}
+
 function build() {
   const files = collect()
   // Una línea en blanco entre módulos para que el archivo generado se lea bien
@@ -128,6 +158,7 @@ function main() {
   const args = process.argv.slice(2)
   const { out, files } = build()
   comprobarVersion(out)
+  comprobarSintaxis(out)
 
   if (args.includes('--check')) {
     const current = fs.existsSync(OUTPUT) ? read(OUTPUT) : ''

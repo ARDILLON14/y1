@@ -4,6 +4,44 @@ Cada versión con lo que la motivó. Los detalles completos están en `docs/CAMB
 
 ## v32 (en curso) — El mundo deja de pelear consigo mismo
 
+### Rozar a un enemigo costaba el golpe entero
+
+En la arena, `radio` hacía tres trabajos a la vez: separar cuerpos para
+que no se apilen, frenar contra la pared y decidir si un golpe toca.
+Mezclados no se pueden ajustar por separado. Un cuerpo generoso —el que
+hace falta para que media docena de sprites no se solapen— significaba
+también una zona golpeable generosa, así que pasar rozando por el borde
+de un enemigo contaba como recibir el golpe entero. Es exactamente lo que
+hace que esquivar no se sienta como esquivar.
+
+Ahora son dos cosas: `radio` es el cuerpo físico y `golpeable` es la zona
+vulnerable. El jugador la tiene más pequeña que su cuerpo, 11 de 15,
+porque lo vulnerable es el torso y no la huella entera del personaje.
+
+Los enemigos la conservan igual a su cuerpo a propósito. Encogerla
+subiría el daño por segundo del jugador, y esto es un arreglo de
+sensaciones, no de balance. El gancho queda puesto por si algún bicho lo
+necesita.
+
+Y para no creerse eso sin medirlo: el mismo guion —plantarse delante de
+los enemigos y atacar durante veinte segundos, seis veces— da 478 de vida
+perdida de media antes del cambio y 484 después, con rangos de 350 a 595
+y de 280 a 630. Plantarse cuesta lo mismo, porque el enemigo se acerca
+hasta tenerte a tiro de todas formas. Lo que cambia es rozar.
+
+### `build.js --check` decía "está al día" sobre un archivo roto
+
+Se descubrió pisándolo: un bloque quedó pegado dentro de un literal de
+objeto y `criptomundo.js` dejó de parsear. `node build.js` lo escribió sin
+rechistar y `node build.js --check` contestó "está al día", porque solo
+comparaba el texto generado contra `src/`. El ritual que documenta el
+proyecto —compilar, comprobar, pasar pruebas— daba dos pasos en verde
+sobre un archivo que Node ni siquiera podía cargar.
+
+Ahora la compilación pasa el resultado por `new vm.Script()`, que compila
+sin ejecutar nada, y si no parsea enseña las líneas de alrededor. Con
+27.000 líneas, un número de línea a secas no sirve de nada.
+
 ### Reiniciar el servidor echaba a todos los jugadores
 
 La cookie de sesión dura siete días. El token que la valida vivía solo en

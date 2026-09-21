@@ -20,6 +20,8 @@ Fecha: 2026-09-21 · Base auditada: commit de importación del zip `criptomundo-
 > - §3.2 el mundo no tenía multijugador — **STEP 6** (con límite dicho)
 > - §3.3 el PvP del servidor no tenía cliente — **STEP 5**
 > - §5.1 sesiones, batallas y chat se perdían al reiniciar — **STEP 7**
+> - §5.2 cuerpo y hurtbox compartían radio — **STEP 8** (ya completo)
+> - §0 `build.js --check` no comprobaba que el archivo parseara — **STEP 8**
 
 Este documento es el resultado de la FASE 0. **No se ha modificado ni una
 línea de gameplay.** Todo lo que sigue está comprobado contra el código o
@@ -418,12 +420,21 @@ echa a todos los jugadores.
 
 ### 5.2 Hitboxes: no hay ventanas de ataque
 
-> ✅ **Resuelto a medias en el STEP 3.** El golpe ya tiene anticipación,
-> ventana activa y recuperación, derivadas de la cadencia del arma y
-> sumando exactamente esa cadencia, así que el daño por segundo no se
-> mueve. Lo cubre `test-arena-ventanas.js`. Lo que sigue pendiente es
-> separar el cuerpo de colisión del hurtbox: los dos siguen compartiendo
-> el mismo `radio`.
+> ✅ **Resuelto del todo: STEP 3 y STEP 8.** El golpe ya tiene
+> anticipación, ventana activa y recuperación, derivadas de la cadencia
+> del arma y sumando exactamente esa cadencia, así que el daño por
+> segundo no se mueve (`test-arena-ventanas.js`).
+>
+> Y en el STEP 8 se separó el cuerpo de la zona golpeable. `radio` hacía
+> tres trabajos: separar cuerpos, frenar contra la pared y decidir si un
+> golpe toca. Ahora `radio` es el cuerpo y `golpeable` es la zona
+> vulnerable. El jugador la tiene más pequeña que su cuerpo (11 de 15);
+> los enemigos la conservan igual al cuerpo a propósito, para no tocar
+> el daño por segundo del jugador. Medido con el mismo guion antes y
+> después —plantarse y atacar 20 segundos, seis veces—: 478 de vida
+> perdida de media antes, 484 después, con rangos de 350–595 y 280–630.
+> Plantarse cuesta lo mismo; lo que cambia es rozar. Lo cubre
+> `test-arena-hurtbox.js`.
 
 `golpear()` (`58-arena.js:578`) aplica el daño **en el mismo instante** en
 que llega la intención. No hay startup / active / recovery. La FASE 6 pide

@@ -24658,6 +24658,39 @@ function armaVista(id) {
   }
 }
 
+// Cuerpo y zona golpeable son DOS cosas distintas.
+//
+// Hasta ahora `radio` hacia tres trabajos a la vez: empujar cuerpos para
+// que no se apilen, frenar contra la pared, y decidir si un golpe toca.
+// Mezclarlos obliga a elegir: un cuerpo generoso para que no se solapen
+// los sprites significaba tambien una zona golpeable generosa, asi que
+// rozar a un enemigo por el borde contaba como recibir el golpe entero.
+// Eso es justo lo que hace que esquivar no se sienta como esquivar.
+//
+//   radio      cuerpo fisico: separacion entre cuerpos y limite de pared
+//   golpeable  zona vulnerable: lo unico que decide si un golpe entra
+//
+// El jugador tiene la zona golpeable MAS PEQUENA que su cuerpo (11 de
+// 15). Es la convencion de todo juego de accion y tiene un motivo: lo
+// vulnerable es el torso, no la huella entera del personaje. Pasar
+// rozando deja de costar vida, pero plantarse delante de un enemigo
+// sigue costando exactamente lo mismo, porque el enemigo se acerca
+// hasta tener al jugador a tiro de todas formas.
+//
+// Los enemigos conservan zona golpeable igual a su cuerpo a proposito:
+// encogerla cambiaria el dano por segundo del jugador, y esto es un
+// arreglo de sensaciones, no de balance. El gancho queda puesto por si
+// algun bicho concreto lo necesita (`golpeable` en su ficha).
+const GOLPEABLE_JUGADOR = 11
+
+function golpeableDe(c) {
+  return Number.isFinite(c && c.golpeable) ? c.golpeable : GOLPEABLE_JUGADOR
+}
+function golpeableEn(en) {
+  const c = en.cfg || {}
+  return Number.isFinite(c.golpeable) ? c.golpeable : c.radio
+}
+
 // Conductas: lo que distingue a un enemigo de otro más allá de sus números
 //   perseguidor  va a por ti y golpea de cerca
 //   tirador      mantiene distancia y dispara
@@ -24767,7 +24800,7 @@ function iniciarArena(player, arenaId) {
   const p = {
     usuario: player.username, arena: a, oleada: 0,
     jugador: {
-      x: ARENA_ANCHO / 2, y: ARENA_ALTO - 90, vx: 0, vy: 0, radio: 15,
+      x: ARENA_ANCHO / 2, y: ARENA_ALTO - 90, vx: 0, vy: 0, radio: 15, golpeable: GOLPEABLE_JUGADOR,
       ex: 0, ey: 0, objx: 0, objy: 0,
       hp: char.hp, hpMax: st.maxHp, def: st.defense,
       // El daño sale de la estadística principal de la clase, igual
@@ -24810,7 +24843,7 @@ function iniciarEncuentro(player, cfg) {
     usuario: player.username, arena: falsaArena, oleada: 0,
     origen: cfg.origen || 'arena', runId: cfg.runId || null,
     jugador: {
-      x: ARENA_ANCHO / 2, y: ARENA_ALTO - 90, vx: 0, vy: 0, radio: 15,
+      x: ARENA_ANCHO / 2, y: ARENA_ALTO - 90, vx: 0, vy: 0, radio: 15, golpeable: GOLPEABLE_JUGADOR,
       ex: 0, ey: 0, objx: 0, objy: 0,
       hp: cfg.vidaInicial != null ? cfg.vidaInicial : char.hp, hpMax: st.maxHp, def: st.defense,
       poder: st[(CLASSES[char.class] || CLASSES.Archimago).primary || 'strength'],
@@ -24969,7 +25002,7 @@ function resolverGolpe(p, ahora) {
   for (const en of p.enemigos) {
     if (en.muerto) continue
     if (g.tocados.includes(en.id)) continue
-    if (dist(j, en) > arma.alcance + en.cfg.radio) continue
+    if (dist(j, en) > arma.alcance + golpeableEn(en)) continue
     const ang = Math.atan2(en.y - j.y, en.x - j.x)
     let dif = Math.abs(((ang - j.mirando + Math.PI * 3) % (Math.PI * 2)) - Math.PI)
     if (dif > arma.arco) continue
@@ -25023,7 +25056,7 @@ function pasoIA(p, en, ahora, dt) {
   const ang = Math.atan2(j.y - en.y, j.x - en.x)
   const c = en.cfg
   const car = caracterDe(en.tipoId)
-  const cuerpos = c.alcance + j.radio
+  const cuerpos = c.alcance + golpeableDe(j)
   // Velocidad del enemigo con sus efectos encima. Se calcula una vez y
   // se usa en todas las ramas: si se leyera c.vel a pelo en cada una,
   // el hielo frenaría al perseguidor y no al tirador.
@@ -25353,7 +25386,7 @@ function tick(p) {
     if (pr.deJugador) {
       for (const en of p.enemigos) {
         if (en.muerto || pr.tocados.includes(en.id)) continue
-        if (!cruza(pr, en.x, en.y, en.cfg.radio)) continue
+        if (!cruza(pr, en.x, en.y, golpeableEn(en))) continue
         dañarEnemigo(p, en, pr.dmg, pr.empuje, pr.dir, ahora)
         if (pr.elemento !== 'normal') {
           aplicarElemento(en, pr.elemento, ahora, pr.dmg)
@@ -25366,7 +25399,7 @@ function tick(p) {
         p.sucesos.push({ t: 'impacto', x: Math.round(pr.x), y: Math.round(pr.y), el: pr.elemento })
         if (pr.tocados.length > pr.atraviesa) { pr.muerto = true; break }
       }
-    } else if (cruza(pr, j.x, j.y, j.radio)) {
+    } else if (cruza(pr, j.x, j.y, golpeableDe(j))) {
       dañarJugador(p, pr.dmg, pr.empuje, pr.dir, ahora)
       if (pr.elemento !== 'normal') aplicarElemento(j, pr.elemento, ahora, pr.dmg)
       pr.muerto = true
@@ -25564,6 +25597,13 @@ function resumen(p) {
     jugador: {
       x: Math.round(p.jugador.x), y: Math.round(p.jugador.y),
       hp: Math.round(p.jugador.hp), hpMax: p.jugador.hpMax,
+      // Los dos circulos del jugador, por separado. De los enemigos ya
+      // viajaba `radio`; del jugador no viajaba ninguno, asi que la
+      // pantalla no podia dibujar su propia huella con el mismo criterio
+      // que la de los demas. Y sin que crucen el cable, una prueba no
+      // puede comprobar que de verdad son dos cosas distintas.
+      radio: p.jugador.radio,
+      golpeable: golpeableDe(p.jugador),
       mirando: Number(p.jugador.mirando.toFixed(2)),
       arma: p.jugador.arma.nombre,
       // Con el nombre solo no se puede dibujar nada. Esto es lo que
