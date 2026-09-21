@@ -244,6 +244,10 @@ html,body{width:100%;height:100%;overflow:hidden;background:#05070A;}
 }
 .cp-action:hover { border-color:rgba(220,38,38,.4); transform:translateY(-1px); }
 .cp-action:disabled { opacity:.3; cursor:not-allowed; }
+/* Los botones de combate son <div>, así que .disabled no los apaga:
+   hace falta una clase de verdad. Sin esto se podían pulsar mientras
+   el turno estaba en el aire. */
+.cp-action.cp-apagada { opacity:.3; cursor:not-allowed; pointer-events:none; }
 .cp-a-icon { font-size:20px; }
 .cp-a-name { font-size:10px; color:#E8E0CC; letter-spacing:.5px; }
 .cp-a-cost { font-size:9px; color:#4090F0; font-family:'JetBrains Mono',monospace; }
@@ -543,10 +547,16 @@ html,body{width:100%;height:100%;overflow:hidden;background:#05070A;}
         </div>
       </div>
       <div class="cp-actions">
-        <div class="cp-action" onclick="combatAction('attack')"><div class="cp-a-icon">⚔️</div><div class="cp-a-name">Golpe</div><div class="cp-a-cost">0 MP</div></div>
-        <div class="cp-action" onclick="combatAction('magic')"><div class="cp-a-icon">🔥</div><div class="cp-a-name">Magia</div><div class="cp-a-cost">40 MP</div></div>
-        <div class="cp-action" onclick="combatAction('heal')"><div class="cp-a-icon">💚</div><div class="cp-a-name">Sanar</div><div class="cp-a-cost">30 MP</div></div>
-        <div class="cp-action" onclick="combatAction('flee')"><div class="cp-a-icon">💨</div><div class="cp-a-name">Huir</div><div class="cp-a-cost">0 MP</div></div>
+        <!-- Los costes no se escriben aquí. Decían "Magia 40 MP" y
+             "Sanar 30 MP", que era lo que cobraba el combate falso del
+             navegador. El de verdad no cobra eso: la magia cuesta lo que
+             cueste la habilidad de TU clase (entre 20 y 45) y sanar no
+             gasta maná, gasta una poción del inventario. Un número fijo
+             ahí es mentira para tres clases de cuatro. -->
+        <div class="cp-action" onclick="combatAction('attack')"><div class="cp-a-icon">⚔️</div><div class="cp-a-name">Golpe</div><div class="cp-a-cost">&nbsp;</div></div>
+        <div class="cp-action" onclick="combatAction('magic')"><div class="cp-a-icon">🔥</div><div class="cp-a-name">Magia</div><div class="cp-a-cost">maná</div></div>
+        <div class="cp-action" onclick="combatAction('heal')"><div class="cp-a-icon">💚</div><div class="cp-a-name">Sanar</div><div class="cp-a-cost">poción</div></div>
+        <div class="cp-action" onclick="combatAction('flee')"><div class="cp-a-icon">💨</div><div class="cp-a-name">Huir</div><div class="cp-a-cost">&nbsp;</div></div>
       </div>
       <div class="cp-log" id="cp-log"></div>
       <button class="cp-close" id="cp-close" onclick="closeCombat()" style="display:none">✓ Continuar</button>

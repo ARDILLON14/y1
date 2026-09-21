@@ -168,6 +168,32 @@ const MONSTERS = {
   m_troll_boss: { id: 'm_troll_boss', name: 'Grommash, Troll Jefe', icon: '👹', level: 7, hp: 900, atk: [70, 110], def: 28, xp: 520, gold: [120, 260], zone: 'forest', element: 'dark', isBoss: true, questKey: 'kill_troll_boss' },
   m_dragon:   { id: 'm_dragon',   name: 'Dragón Menor',    icon: '🐉', level: 15, hp: 1500,  atk: [95, 155],  def: 30, xp: 680, gold: [180, 380],  zone: 'ruins',  element: 'fire',      isBoss: true, questKey: 'kill_dragon' },
   m_demon:    { id: 'm_demon',    name: 'Demonio Abismal', icon: '👿', level: 20, hp: 1850, atk: [115, 175], def: 40, xp: 900, gold: [280, 480],  zone: 'ruins',  element: 'dark',      isBoss: true, questKey: 'kill_demon' },
+
+  // ── Los dos que vivían solo en el mapa ─────────────────────────
+  //
+  // El Murciélago Oscuro y el Liche Antiguo estaban declarados en el
+  // mundo 2D —con nivel, vida, ataque, oro y experiencia— y NO en esta
+  // tabla. Mientras el mapa se peleaba solo en el navegador daba igual;
+  // en cuanto el combate pasa por el servidor, un bicho que el catálogo
+  // no conoce no se puede pelear. O se borraban del mapa o entraban
+  // aquí. Entran, porque son contenido que ya estaba diseñado.
+  //
+  // De dónde salen los números, para que no parezcan de mi cosecha:
+  //
+  //   m_bat    tal cual los declaraba el mapa. Encajan sin tocarlos: un
+  //            nivel 4 flojo con 200 de vida queda justo por debajo del
+  //            Esqueleto (nivel 4, 250), que es lo que pretende ser.
+  //
+  //   m_liche  el mapa le daba 850 de vida, pero ese número venía de la
+  //            escala del cliente, no de esta tabla. Aquí manda la curva
+  //            documentada arriba —vida ≈ 130 × nivel^0,71— que para
+  //            nivel 18 da 1.005. No lleva el ×1,7 de jefe porque no es
+  //            un jefe: es un enemigo duro de zona. Ataque y defensa se
+  //            interpolan entre el Dragón (15) y el Demonio (20), que lo
+  //            rodean. La experiencia y el oro son los del mapa, y ya
+  //            caían entre los de esos dos.
+  m_bat:      { id: 'm_bat',      name: 'Murciélago Oscuro', icon: '🦇', level: 4,  hp: 200,  atk: [30, 50],   def: 6,  xp: 100, gold: [10, 30],   zone: 'mines',  element: 'dark', questKey: 'kill_bat' },
+  m_liche:    { id: 'm_liche',    name: 'Liche Antiguo',     icon: '🧛', level: 18, hp: 1005, atk: [100, 160], def: 34, xp: 780, gold: [200, 400], zone: 'ruins',  element: 'dark', questKey: 'kill_liche' },
 }
 // Tabla de botín server-side (el cliente nunca decide qué cae)
 const LOOT_TABLES = {
@@ -178,6 +204,12 @@ const LOOT_TABLES = {
   m_troll_boss: [{ id: 'leather', w: 60, q: [2, 4] }, { id: 'iron_ore', w: 45, q: [2, 4] }, { id: 'sword_alba', w: 12, q: [1, 1] }],
   m_dragon:   [{ id: 'crystal', w: 35, q: [1, 2] }, { id: 'thunder_staff', w: 3, q: [1, 1] }, { id: 'soul_shard', w: 1, q: [1, 1] }, { id: 'potion_hp_big', w: 14, q: [1, 1] }],
   m_demon:    [{ id: 'crystal', w: 30, q: [1, 3] }, { id: 'arcane_orb', w: 4, q: [1, 1] }, { id: 'soul_shard', w: 2, q: [1, 1] }, { id: 'potion_hp_iv', w: 8, q: [1, 1] }],
+  m_bat:      [{ id: 'leather', w: 40, q: [1, 2] }, { id: 'herb', w: 25, q: [1, 1] }],
+  // El Anillo de Hueso se fabricaba (rec_ring, nivel 9) y no caía de
+  // NADA. Un accesorio raro que solo sale de la forja deja la mitad
+  // del recorrido sin usar: ahora también se puede arrancar de un
+  // liche, que es de donde debería salir un anillo de hueso.
+  m_liche:    [{ id: 'crystal', w: 28, q: [1, 2] }, { id: 'bone_ring', w: 6, q: [1, 1] }, { id: 'soul_shard', w: 1, q: [1, 1] }, { id: 'potion_hp_iv', w: 6, q: [1, 1] }],
 }
 const ELEMENT_CHART = { // atacante → defensor con esa resistencia
   fire:   { ice: 1.3, nature: 1.3, water: 0.7, fire: 0.6 },

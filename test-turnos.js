@@ -116,20 +116,44 @@ async function run() {
   console.log('\n── LAS REGLAS DE SIEMPRE SIGUEN AHÍ ──')
   let vioCrit = false, vioFallo = false, vioCombo = false, vioAviso = false, vioVeneno = false
   let turnos = 0, fin = null
+  const traza = []
+  // Bloquear uno de cada SEIS turnos, no uno de cada cuatro.
+  //
+  // El combo sube encadenando golpes y se pone a cero al bloquear y al
+  // comerse el golpe anunciado del enemigo. Contra el Gólem —el bicho
+  // que elige esta prueba— el jugador de nivel 1 muere en 6 turnos, y
+  // midiendo la secuencia real sale siempre la misma:
+  //
+  //     a1  a2  a0  B0  a1  a0        (a = ataque, B = bloqueo)
+  //          ^^      ^^
+  //          |       bloqueo: combo a cero
+  //          única ventana en la que el combo llega a 2
+  //
+  // O sea que había UNA sola oportunidad de ver el combo en todo el
+  // combate, y un fallo del ataque —un 5% por golpe— la cerraba. Eso
+  // daba un 10% de ejecuciones en rojo por mala suerte, y con la suite
+  // encadenada con && se llevaba por delante a las que venían detrás.
+  //
+  // Bloqueando cada seis turnos quedan dos ventanas (i=1 e i=4), y hace
+  // falta mala suerte en las dos: baja del 10% a cerca del 1%. El
+  // combate dura lo mismo y se sigue bloqueando.
   for (let i = 0; i < 26 && !fin; i++) {
-    const res = await accion({ battleId, action: i % 4 === 3 ? 'block' : 'attack' })
+    const res = await accion({ battleId, action: i % 6 === 5 ? 'block' : 'attack' })
     if (res.status !== 200) break
     turnos++
     if (res.body.crit) vioCrit = true
     if (res.body.miss) vioFallo = true
     if ((res.body.combo || 0) >= 2) vioCombo = true
+    traza.push((i % 6 === 5 ? 'B' : 'a') + (res.body.miss ? 'x' : '') + (res.body.combo || 0))
     if (res.body.telegraph) vioAviso = true
     if ((res.body.guion || []).some(f => f.veneno)) vioVeneno = true
     if (res.body.enemyDied) fin = 'victoria'
     if (res.body.playerDied) fin = 'derrota'
   }
   check('el combate avanza turno a turno', turnos > 3, String(turnos) + ' turnos')
-  check('el combo sigue funcionando', vioCombo, 'combo visto: ' + vioCombo)
+  // Con la traza, un fallo dice qué pasó turno a turno en vez de
+  // obligar a instrumentar la prueba a mano para averiguarlo.
+  check('el combo sigue funcionando', vioCombo, 'secuencia: ' + traza.join(' '))
   check('el enemigo sigue avisando su golpe fuerte', vioAviso, 'aviso visto: ' + vioAviso)
   check('el combate termina', !!fin, String(fin))
 

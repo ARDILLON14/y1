@@ -2333,6 +2333,10 @@ html,body{width:100%;height:100%;overflow:hidden;background:#05070A;}
 }
 .cp-action:hover { border-color:rgba(220,38,38,.4); transform:translateY(-1px); }
 .cp-action:disabled { opacity:.3; cursor:not-allowed; }
+/* Los botones de combate son <div>, así que .disabled no los apaga:
+   hace falta una clase de verdad. Sin esto se podían pulsar mientras
+   el turno estaba en el aire. */
+.cp-action.cp-apagada { opacity:.3; cursor:not-allowed; pointer-events:none; }
 .cp-a-icon { font-size:20px; }
 .cp-a-name { font-size:10px; color:#E8E0CC; letter-spacing:.5px; }
 .cp-a-cost { font-size:9px; color:#4090F0; font-family:'JetBrains Mono',monospace; }
@@ -2632,10 +2636,16 @@ html,body{width:100%;height:100%;overflow:hidden;background:#05070A;}
         </div>
       </div>
       <div class="cp-actions">
-        <div class="cp-action" onclick="combatAction('attack')"><div class="cp-a-icon">⚔️</div><div class="cp-a-name">Golpe</div><div class="cp-a-cost">0 MP</div></div>
-        <div class="cp-action" onclick="combatAction('magic')"><div class="cp-a-icon">🔥</div><div class="cp-a-name">Magia</div><div class="cp-a-cost">40 MP</div></div>
-        <div class="cp-action" onclick="combatAction('heal')"><div class="cp-a-icon">💚</div><div class="cp-a-name">Sanar</div><div class="cp-a-cost">30 MP</div></div>
-        <div class="cp-action" onclick="combatAction('flee')"><div class="cp-a-icon">💨</div><div class="cp-a-name">Huir</div><div class="cp-a-cost">0 MP</div></div>
+        <!-- Los costes no se escriben aquí. Decían "Magia 40 MP" y
+             "Sanar 30 MP", que era lo que cobraba el combate falso del
+             navegador. El de verdad no cobra eso: la magia cuesta lo que
+             cueste la habilidad de TU clase (entre 20 y 45) y sanar no
+             gasta maná, gasta una poción del inventario. Un número fijo
+             ahí es mentira para tres clases de cuatro. -->
+        <div class="cp-action" onclick="combatAction('attack')"><div class="cp-a-icon">⚔️</div><div class="cp-a-name">Golpe</div><div class="cp-a-cost">&nbsp;</div></div>
+        <div class="cp-action" onclick="combatAction('magic')"><div class="cp-a-icon">🔥</div><div class="cp-a-name">Magia</div><div class="cp-a-cost">maná</div></div>
+        <div class="cp-action" onclick="combatAction('heal')"><div class="cp-a-icon">💚</div><div class="cp-a-name">Sanar</div><div class="cp-a-cost">poción</div></div>
+        <div class="cp-action" onclick="combatAction('flee')"><div class="cp-a-icon">💨</div><div class="cp-a-name">Huir</div><div class="cp-a-cost">&nbsp;</div></div>
       </div>
       <div class="cp-log" id="cp-log"></div>
       <button class="cp-close" id="cp-close" onclick="closeCombat()" style="display:none">✓ Continuar</button>
@@ -2780,10 +2790,14 @@ const ZONES = {
     npcs:[
       { id:'elara', x:480, y:200, sprite:'🌿', name:'Elara la Guardabosque', role:'Guardiana del Bosque', greeting:'Silencio... El bosque habla de peligro. Una plaga corrompe los árboles del este. Necesito tu ayuda.', choices:['¿Dónde están?','Puedo intentarlo','Demasiado peligroso'] },
     ],
+    // Los bichos del mapa dicen DÓNDE están y cómo se dibujan. Lo que
+    // pegan, lo que aguantan y lo que sueltan lo dice el servidor: esos
+    // números vivían aquí duplicados y con otra escala, y el combate
+    // del navegador los usaba para repartirse el oro él solo.
     monsters:[
-      { id:'troll',    sprite:'🧟', name:'Troll Sombrío',   level:5,  hp:520,  atk:[55,85],  gold:[60,130],  xp:280,  loot:'uncommon' },
-      { id:'spider',   sprite:'🕷️', name:'Araña Venenosa', level:3,  hp:380,  atk:[40,70],  gold:[30,70],   xp:180,  loot:'common'   },
-      { id:'skeleton', sprite:'💀', name:'Esqueleto',       level:4,  hp:300,  atk:[45,75],  gold:[25,65],   xp:160,  loot:'common'   },
+      { id:'troll',    servidor:'m_troll',    sprite:'🧟', name:'Troll Sombrío',   level:5  },
+      { id:'spider',   servidor:'m_spider',   sprite:'🕷️', name:'Araña Venenosa', level:3  },
+      { id:'skeleton', servidor:'m_skeleton', sprite:'💀', name:'Esqueleto',       level:4  },
     ],
     exits:{ south:'pueblo', east:'ruinas' },
     structures:[
@@ -2806,8 +2820,8 @@ const ZONES = {
       { id:'thorn', x:400, y:200, sprite:'⛏️', name:'Thorn el Minero', role:'Jefe de las Minas', greeting:'Maldición... Los gólems de piedra han bloqueado el tercer túnel. ¿Puedes eliminarlos?', choices:['¿Cuántos hay?','De acuerdo','Demasiado riesgo'] },
     ],
     monsters:[
-      { id:'golem',   sprite:'🗿', name:'Gólem de Piedra',  level:8,  hp:900,  atk:[85,125], gold:[100,200], xp:520, loot:'rare'     },
-      { id:'bat',     sprite:'🦇', name:'Murciélago Oscuro',level:4,  hp:200,  atk:[30,50],  gold:[10,30],   xp:100, loot:'common'   },
+      { id:'golem',   servidor:'m_golem',  sprite:'🗿', name:'Gólem de Piedra',  level:8  },
+      { id:'bat',     servidor:'m_bat',    sprite:'🦇', name:'Murciélago Oscuro',level:4  },
     ],
     exits:{ west:'pueblo', south:'ruinas' },
     structures:[
@@ -2829,9 +2843,9 @@ const ZONES = {
       { id:'draven', servidor:'npc_draven', x:400, y:180, sprite:'🗡️', name:'Capitán Draven', role:'Comandante de la Guardia', greeting:'¡Soldado! Las ruinas están infestadas. Necesito un agente para una misión de reconocimiento urgente.', choices:['Estoy listo','¿Qué riesgo?','Busca a otro'] },
     ],
     monsters:[
-      { id:'demon',  sprite:'👿', name:'Demonio Abismal',   level:20, hp:1100, atk:[115,175],gold:[280,480], xp:900,  loot:'epic'     },
-      { id:'dragon', sprite:'🐉', name:'Dragón Menor',      level:15, hp:700,  atk:[95,155], gold:[180,380], xp:680,  loot:'epic'     },
-      { id:'liche',  sprite:'💀', name:'Liche Antiguo',     level:18, hp:850,  atk:[100,160],gold:[200,400], xp:780,  loot:'rare'     },
+      { id:'demon',  servidor:'m_demon',  sprite:'👿', name:'Demonio Abismal',   level:20 },
+      { id:'dragon', servidor:'m_dragon', sprite:'🐉', name:'Dragón Menor',      level:15 },
+      { id:'liche',  servidor:'m_liche',  sprite:'🧛', name:'Liche Antiguo',     level:18 },
     ],
     exits:{ north:'minas', west:'bosque' },
     structures:[
@@ -2842,12 +2856,6 @@ const ZONES = {
   },
 }
 
-const LOOT_ITEMS = {
-  common:   [{icon:'🪨',name:'Mineral de Hierro'},{icon:'🌿',name:'Hierba Medicinal'},{icon:'🧪',name:'Poción de Vida'}],
-  uncommon: [{icon:'⚔️',name:'Espada del Alba'},{icon:'🧶',name:'Cuero Curtido'},{icon:'💊',name:'Poción de Maná'}],
-  rare:     [{icon:'💎',name:'Cristal de Hielo'},{icon:'🏹',name:'Arco Élfico'},{icon:'🛡️',name:'Escudo de Roble'}],
-  epic:     [{icon:'⚡',name:'Cetro del Trueno'},{icon:'🔮',name:'Orbe Arcano'},{icon:'☠️',name:'Veneno del Abismo'}],
-}
 
 // ═══════════════════════════════════════════════════
 // PLAYER STATE
@@ -3297,7 +3305,7 @@ class WorldScene extends Phaser.Scene {
         const sombraMon = this.add.ellipse(mx, my + 12, 22, 8, 0x000000, 0.3).setDepth(6)
 
         this.monsterTexts.push(t)
-        this.monsterData.push({ ...mon, label: lbl, sombra: sombraMon, currentHp: mon.hp })
+        this.monsterData.push({ ...mon, label: lbl, sombra: sombraMon })
         this.monsterWalkTimers.push(Phaser.Math.Between(0, 120))
       }
     })
@@ -3516,16 +3524,18 @@ class WorldScene extends Phaser.Scene {
 
   triggerCombat(monsterData, monsterText, index) {
     if (activeCombat) return
-    activeCombat = { ...monsterData, spriteText: monsterText, index, currentHp: monsterData.hp }
+    activeCombat = { ...monsterData, spriteText: monsterText, index }
 
     document.getElementById('cp-sprite').textContent = monsterData.sprite
     document.getElementById('cp-name').textContent   = monsterData.name
-    document.getElementById('cp-hp-txt').textContent = \`\${monsterData.hp} / \${monsterData.hp} HP\`
-    document.getElementById('cp-hp-bar').style.width = '100%'
+    // La vida del enemigo se escala a quien lo pelea, así que la ficha
+    // del mapa no sirve para enseñarla: hasta el primer turno no hay
+    // número de verdad, y un número inventado es peor que una raya.
+    pintarVidaEnemigo(null, null)
     document.getElementById('cp-log').innerHTML      = ''
     document.getElementById('cp-close').style.display= 'none'
     document.getElementById('combat-popup').classList.add('open')
-    document.querySelectorAll('.cp-action').forEach(b => b.disabled = false)
+    accionesHabilitadas(true)
 
     addLog(\`⚔️ Combate con \${monsterData.sprite} \${monsterData.name} (Nv.\${monsterData.level})!\`, 'combat')
     this.cameras.main.flash(200, 220, 38, 38, true)
@@ -3641,147 +3651,6 @@ class WorldScene extends Phaser.Scene {
   }
 }
 
-// ═══════════════════════════════════════════════════
-// COMBAT LOGIC
-// ═══════════════════════════════════════════════════
-
-function combatAction(type) {
-  if (!activeCombat || combatBusy) return
-  combatBusy = true
-  document.querySelectorAll('.cp-action').forEach(b => b.disabled = true)
-
-  const mp_costs = { attack:0, magic:40, heal:30, flee:0 }
-  const cost = mp_costs[type] ?? 0
-
-  if (PLAYER.mp < cost) {
-    addCombatLog(\`🔷 No tienes suficiente Maná.\`, 'miss')
-    combatBusy = false
-    document.querySelectorAll('.cp-action').forEach(b => b.disabled = false)
-    return
-  }
-  PLAYER.mp = Math.max(0, PLAYER.mp - cost)
-  updateBars()
-
-  let playerDmg = 0
-
-  if (type === 'flee') {
-    const fled = Math.random() < 0.45
-    if (fled) {
-      addCombatLog('💨 ¡Huiste exitosamente!', 'miss')
-      addLog('💨 Huiste del combate.', 'combat')
-      setTimeout(() => closeCombat(true), 800)
-      return
-    } else {
-      addCombatLog('💨 Intentas huir pero fallas...', 'miss')
-    }
-  } else if (type === 'attack') {
-    const crit = Math.random() < 0.18
-    const miss = Math.random() < 0.06
-    if (miss) {
-      addCombatLog('⚔️ Tu ataque falla en el blanco.', 'miss')
-    } else {
-      playerDmg = Math.max(1, roll(...PLAYER.atk) - Math.floor(activeCombat.atk[0] * 0.2))
-      if (crit) playerDmg = Math.floor(playerDmg * 1.8)
-      addCombatLog(\`⚔️ Atacas.\${crit?' ¡CRÍTICO!':''} \${playerDmg} daño.\`, 'hit')
-    }
-  } else if (type === 'magic') {
-    playerDmg = Math.max(10, roll(PLAYER.int*2, PLAYER.int*3) - 10)
-    addCombatLog(\`🔥 Bola de Fuego! \${playerDmg} daño mágico.\`, 'hit')
-  } else if (type === 'heal') {
-    const h = roll(120,200)
-    PLAYER.hp = Math.min(PLAYER.hp + h, PLAYER.maxHp)
-    addCombatLog(\`💚 Sanación: +\${h} HP.\`, 'heal')
-    updateBars()
-  }
-
-  if (playerDmg > 0) {
-    activeCombat.currentHp = Math.max(0, activeCombat.currentHp - playerDmg)
-    const pct = (activeCombat.currentHp / activeCombat.hp * 100).toFixed(1)
-    document.getElementById('cp-hp-bar').style.width = pct + '%'
-    document.getElementById('cp-hp-txt').textContent = \`\${activeCombat.currentHp} / \${activeCombat.hp} HP\`
-  }
-
-  // Enemy died?
-  if (activeCombat.currentHp <= 0) {
-    onEnemyKilled()
-    return
-  }
-
-  // Enemy turn
-  setTimeout(() => {
-    const eDmg = Math.max(1, roll(...activeCombat.atk) - Math.floor(PLAYER.def * 0.4))
-    PLAYER.hp  = Math.max(0, PLAYER.hp - eDmg)
-    addCombatLog(\`\${activeCombat.sprite} \${activeCombat.name} ataca. \${eDmg} daño.\`, 'hit')
-    updateBars()
-
-    if (PLAYER.hp <= 0) {
-      onPlayerDied()
-      return
-    }
-
-    combatBusy = false
-    document.querySelectorAll('.cp-action').forEach(b => b.disabled = false)
-  }, 600)
-}
-
-function onEnemyKilled() {
-  const goldGain = roll(...(activeCombat.gold ?? [20,60]))
-  const xpGain   = activeCombat.xp ?? 150
-  PLAYER.gold   += goldGain
-  PLAYER.xp     += xpGain
-  PLAYER.kills  ++
-
-  document.getElementById('hud-gold').textContent  = PLAYER.gold.toLocaleString()
-  document.getElementById('hud-crypto').textContent = PLAYER.crypto
-  document.getElementById('hud-kills').textContent  = PLAYER.kills
-
-  const pool  = LOOT_ITEMS[activeCombat.loot ?? 'common']
-  const item  = pool[Math.floor(Math.random() * pool.length)]
-  const dropped = Math.random() < 0.65
-
-  addCombatLog(\`💀 ¡\${activeCombat.name} derrotado!\`, 'hit')
-  addCombatLog(\`🪙 +\${goldGain} oro  ✨ +\${xpGain} EXP\`, 'heal')
-  if (dropped) {
-    addCombatLog(\`\${item.icon} ¡Obtuviste: \${item.name}!\`, 'heal')
-    addLog(\`\${item.icon} Loot: \${item.name}\`, 'loot')
-  }
-  addLog(\`☠️ Derrotaste a \${activeCombat.sprite} \${activeCombat.name} (+\${goldGain} 🪙 +\${xpGain} EXP)\`, 'combat')
-
-  // Remove monster from world
-  if (activeCombat.spriteText) {
-    gameScene.tweens.add({ targets: activeCombat.spriteText, alpha: 0, y: activeCombat.spriteText.y - 20, duration: 400, onComplete: () => { activeCombat.spriteText.destroy() } })
-    if (gameScene.monsterData[activeCombat.index]?.label) {
-      gameScene.monsterData[activeCombat.index].label.destroy()
-    }
-    gameScene.monsterTexts.splice(activeCombat.index, 1)
-    gameScene.monsterData.splice(activeCombat.index, 1)
-    gameScene.monsterWalkTimers.splice(activeCombat.index, 1)
-  }
-
-  showToast(\`⚔️ Victoria! +\${goldGain} 🪙 +\${xpGain} EXP\`)
-  updateBars()
-  document.getElementById('cp-close').style.display = 'block'
-  combatBusy = false
-}
-
-function onPlayerDied() {
-  const lost = Math.floor(PLAYER.gold * 0.08)
-  PLAYER.gold = Math.max(0, PLAYER.gold - lost)
-  PLAYER.hp   = Math.floor(PLAYER.maxHp * 0.5)
-  addCombatLog(\`☠️ Has sido derrotado. Pierdes \${lost} oro.\`, 'miss')
-  addLog(\`☠️ Derrotado. Respawn en el Pueblo (-\${lost} 🪙)\`, 'combat')
-  updateBars()
-  document.getElementById('hud-gold').textContent = PLAYER.gold.toLocaleString()
-  document.getElementById('cp-close').style.display = 'block'
-  combatBusy = false
-
-  // Respawn in pueblo after delay
-  setTimeout(() => {
-    closeCombat(true)
-    gameScene.changeZone('pueblo')
-  }, 1500)
-}
-
 function closeCombat(force = false) {
   if (combatBusy && !force) return
   document.getElementById('combat-popup').classList.remove('open')
@@ -3888,12 +3757,19 @@ function triggerAction(type) {
       if (activeCombat) combatAction('attack')
       else addLog('⚔️ Sin enemigo cercano.', 'system')
     },
-    potion: () => {
-      const h = roll(120,200)
-      PLAYER.hp = Math.min(PLAYER.hp + h, PLAYER.maxHp)
+    // Curaba entre 120 y 200 de vida sin gastar nada del inventario:
+    // una poción infinita. El endpoint que sí descuenta el objeto ya
+    // existía y lo usa la pantalla de combate.
+    potion: async () => {
+      const r = await apiPost('/api/player/use', { itemId: 'potion_hp' })
+      if (!r.ok) {
+        showToast('⚠️ ' + (r.data.error || 'No tienes pociones'))
+        return
+      }
+      PLAYER.hp = r.data.hp; PLAYER.mp = r.data.mp
       updateBars()
-      showToast(\`💚 Poción usada: +\${h} HP\`)
-      addLog(\`🧪 Usaste una Poción de Vida (+\${h} HP)\`, 'system')
+      showToast('💚 Poción usada: +' + r.data.curado + ' HP')
+      addLog('🧪 Usaste una Poción de Curación I (+' + r.data.curado + ' HP)', 'system')
     },
     magic: () => {
       if (activeCombat) combatAction('magic')
@@ -3928,7 +3804,6 @@ function openModule(name) {
   }
 }
 
-function roll(min, max) { return Math.floor(Math.random()*(max-min+1))+min }
 
 // ═══════════════════════════════════════════════════
 // PHASER CONFIG
@@ -4454,6 +4329,194 @@ window.addEventListener('load', async () => {
   </div>
 </div>
 `
+
+// El mundo 2D se parte en tres módulos, igual que el combate por
+// turnos: la pantalla y el motor de Phaser en criptomundo-mundo2d.js,
+// el mundo y sus zonas en el -2, y AQUÍ el combate.
+//
+// No es solo por el límite de 70 KB por módulo que vigila
+// test-build.js. Son dos cosas distintas: una dibuja el mundo y lo
+// recorre; la otra manda la intención de pelear al servidor y cuenta
+// lo que contesta. Mientras estuvieron juntas, el combate acabó
+// resolviéndose en el navegador sin que se notara.
+PAGES['criptomundo-mundo2d.html'] += `<script>
+// ═══════════════════════════════════════════════════
+// COMBATE (autoridad del servidor)
+// ═══════════════════════════════════════════════════
+
+// El combate del mundo lo decide el SERVIDOR
+// ───────────────────────────────────────────
+//
+// Esta pantalla resolvía la pelea ella sola: tiraba el dado del
+// crítico, del fallo y de la huida, calculaba el daño, se sumaba el
+// oro y la experiencia, y elegía el botín de una lista suya que ni
+// siquiera coincidía con el catálogo del juego. Nada de eso salía del
+// navegador.
+//
+// Dos consecuencias, las dos comprobadas:
+//   · cualquiera con la consola abierta se ponía el oro que quisiera;
+//   · el progreso no existía. Al recargar no quedaba nada, y mientras
+//     tanto syncCharacter() traía cada 8 segundos las cifras de verdad
+//     y borraba las inventadas delante del jugador.
+//
+// Ahora manda una intención y pinta lo que contesta el servidor. El
+// endpoint ya existía, ya era autoritativo y ya estaba probado: esta
+// era la única pantalla del juego que no lo usaba.
+
+function accionesHabilitadas(activas) {
+  document.querySelectorAll('.cp-action').forEach(function (b) {
+    // Son <div>, no <button>: ponerles .disabled no hacía absolutamente
+    // nada y los botones seguían clicables en mitad del turno.
+    b.classList.toggle('cp-apagada', !activas)
+  })
+}
+
+// Cuánta vida le queda al enemigo, con sus números de verdad. Hasta que
+// el servidor contesta el primer turno no se sabe: la vida del bicho se
+// escala a quien lo pelea, así que la ficha del mapa no vale.
+function pintarVidaEnemigo(hp, hpMax) {
+  var txt = document.getElementById('cp-hp-txt')
+  var bar = document.getElementById('cp-hp-bar')
+  if (hp == null || !hpMax) { if (txt) txt.textContent = '— / — HP'; if (bar) bar.style.width = '100%'; return }
+  if (txt) txt.textContent = hp + ' / ' + hpMax + ' HP'
+  if (bar) bar.style.width = Math.max(0, Math.min(100, (hp / hpMax) * 100)).toFixed(1) + '%'
+}
+
+async function combatAction(type) {
+  if (!activeCombat || combatBusy) return
+  if (!activeCombat.servidor) {
+    addCombatLog('⚠️ Este enemigo no está en el catálogo del servidor.', 'miss')
+    return
+  }
+  combatBusy = true
+  accionesHabilitadas(false)
+
+  var r = await apiPost('/api/combat/action', {
+    monsterId: activeCombat.servidor,
+    battleId: activeCombat.battleId || null,
+    action: type,
+  })
+
+  if (!r.ok) {
+    // El servidor dice por qué: sin maná, en enfriamiento, demasiado
+    // rápido, sin pociones. Se enseña tal cual en vez de dejar al
+    // jugador preguntándose si el botón funciona.
+    addCombatLog('⚠️ ' + (r.data.error || 'El servidor rechazó la acción'), 'miss')
+    combatBusy = false
+    accionesHabilitadas(true)
+    return
+  }
+
+  var d = r.data
+  activeCombat.battleId = d.battleId
+
+  // ── Lo que hizo el jugador ──
+  if (d.miss) addCombatLog('⚔️ Tu ataque falla en el blanco.', 'miss')
+  else if (d.playerDmg > 0) {
+    addCombatLog('⚔️ Golpeas' + (d.crit ? ' ¡CRÍTICO!' : '') + ' ' + d.playerDmg + ' de daño.', 'hit')
+  }
+  if (d.result && d.result.playerHeal > 0) addCombatLog('💚 Te curas ' + d.result.playerHeal + ' de vida.', 'heal')
+  ;(d.result && d.result.log ? d.result.log : []).forEach(function (l) { addCombatLog('· ' + l, 'miss') })
+  if (d.combo >= 3) addCombatLog('🔥 Combo ×' + d.combo, 'hit')
+
+  // ── Lo que hizo el enemigo ──
+  if (d.enemyDmg > 0) addCombatLog(activeCombat.sprite + ' ' + activeCombat.name + ' ataca. ' + d.enemyDmg + ' de daño.', 'hit')
+  // El campo se llama name, no nombre: es el objeto de battle.telegraph
+  // tal cual, y leyéndolo mal el aviso no salía nunca.
+  //
+  // El texto no dice "bloquea o interrumpe" como el de la pantalla de
+  // combate completa, porque aquí no hay botón de bloquear: esta
+  // pantalla solo ofrece golpe, magia, sanar y huir. Prometer una
+  // acción que no está es peor que no avisar.
+  if (d.telegraph && d.telegraph.name) {
+    addCombatLog('⚠️ ' + activeCombat.name + ' prepara ' + d.telegraph.name + '.', 'miss')
+  }
+
+  pintarVidaEnemigo(d.newMonsterHp, d.enemyMaxHp)
+  PLAYER.hp = d.newHp
+  PLAYER.mp = d.newMp
+  updateBars()
+
+  ;(d.questUpdates || []).forEach(function (q) {
+    addLog('📜 Misión: objetivo ' + q.current + '/' + q.required, 'loot')
+  })
+
+  if (d.fled) return alHuir()
+  if (d.enemyDied) return alMatarEnemigo(d)
+  if (d.playerDied) return alMorir(d)
+
+  combatBusy = false
+  accionesHabilitadas(true)
+}
+
+function alHuir() {
+  addCombatLog('💨 ¡Escapaste del combate!', 'miss')
+  addLog('💨 Huiste del combate.', 'combat')
+  setTimeout(function () { closeCombat(true) }, 800)
+}
+
+function alMatarEnemigo(d) {
+  addCombatLog('💀 ¡' + activeCombat.name + ' derrotado!', 'hit')
+  addCombatLog('🪙 +' + d.goldEarned + ' oro  ✨ +' + d.xpEarned + ' EXP', 'heal')
+  if (d.cgridEarned) addCombatLog('🪩 +' + d.cgridEarned + ' CGRID', 'heal')
+
+  // El botín es el que decidió el servidor y YA está en el inventario.
+  ;(d.loot || []).forEach(function (l) {
+    addCombatLog((l.icon || '📦') + ' ¡Obtuviste: ' + l.name + ' ×' + l.quantity + '!', 'heal')
+    addLog((l.icon || '📦') + ' Botín: ' + l.name + ' ×' + l.quantity, 'loot')
+  })
+  ;(d.levelUps || []).forEach(function (lu) {
+    addCombatLog('⭐ ¡Subes al nivel ' + lu.level + '!', 'heal')
+    addLog('⭐ Nivel ' + lu.level, 'loot')
+  })
+  addLog('☠️ Derrotaste a ' + activeCombat.sprite + ' ' + activeCombat.name +
+         ' (+' + d.goldEarned + ' 🪙 +' + d.xpEarned + ' EXP)', 'combat')
+
+  quitarEnemigoDelMapa()
+  showToast('⚔️ ¡Victoria! +' + d.goldEarned + ' 🪙 +' + d.xpEarned + ' EXP')
+  // Oro, experiencia, nivel y bajas vienen de donde se guardan.
+  syncCharacter()
+  document.getElementById('cp-close').style.display = 'block'
+  combatBusy = false
+}
+
+// Saca del mapa al bicho que acaba de morir. Es lo único de todo esto
+// que sigue siendo cosa del cliente, porque es dibujo, no reglas.
+function quitarEnemigoDelMapa() {
+  if (!gameScene || !activeCombat || activeCombat.index == null) return
+  // La referencia se guarda ANTES de animar: el desvanecido dura 400 ms
+  // y pulsar "Continuar" antes de que acabe deja activeCombat a null,
+  // así que leerlo dentro del onComplete reventaba.
+  var sprite = activeCombat.spriteText
+  if (sprite) {
+    gameScene.tweens.add({
+      targets: sprite, alpha: 0, y: sprite.y - 20,
+      duration: 400, onComplete: function () { sprite.destroy() },
+    })
+  }
+  var md = gameScene.monsterData[activeCombat.index]
+  if (md && md.label) md.label.destroy()
+  if (md && md.sombra) md.sombra.destroy()
+  gameScene.monsterTexts.splice(activeCombat.index, 1)
+  gameScene.monsterData.splice(activeCombat.index, 1)
+  gameScene.monsterWalkTimers.splice(activeCombat.index, 1)
+}
+
+async function alMorir(d) {
+  addCombatLog('☠️ Has sido derrotado. Pierdes ' + (d.goldLost || 0) + ' oro.', 'miss')
+  addLog('☠️ Derrotado. Vuelves al Pueblo (-' + (d.goldLost || 0) + ' 🪙)', 'combat')
+  // El servidor ya dejó la vida al 50 %; respawn solo lo confirma y
+  // devuelve las cifras buenas.
+  await apiPost('/api/player/respawn', {})
+  await syncCharacter()
+  document.getElementById('cp-close').style.display = 'block'
+  combatBusy = false
+  setTimeout(function () {
+    closeCombat(true)
+    gameScene.changeZone('pueblo')
+  }, 1500)
+}
+</script>`
 
 PAGES['criptomundo-combat.html'] = `<!DOCTYPE html>
 <html lang="es">
@@ -20132,6 +20195,32 @@ const MONSTERS = {
   m_troll_boss: { id: 'm_troll_boss', name: 'Grommash, Troll Jefe', icon: '👹', level: 7, hp: 900, atk: [70, 110], def: 28, xp: 520, gold: [120, 260], zone: 'forest', element: 'dark', isBoss: true, questKey: 'kill_troll_boss' },
   m_dragon:   { id: 'm_dragon',   name: 'Dragón Menor',    icon: '🐉', level: 15, hp: 1500,  atk: [95, 155],  def: 30, xp: 680, gold: [180, 380],  zone: 'ruins',  element: 'fire',      isBoss: true, questKey: 'kill_dragon' },
   m_demon:    { id: 'm_demon',    name: 'Demonio Abismal', icon: '👿', level: 20, hp: 1850, atk: [115, 175], def: 40, xp: 900, gold: [280, 480],  zone: 'ruins',  element: 'dark',      isBoss: true, questKey: 'kill_demon' },
+
+  // ── Los dos que vivían solo en el mapa ─────────────────────────
+  //
+  // El Murciélago Oscuro y el Liche Antiguo estaban declarados en el
+  // mundo 2D —con nivel, vida, ataque, oro y experiencia— y NO en esta
+  // tabla. Mientras el mapa se peleaba solo en el navegador daba igual;
+  // en cuanto el combate pasa por el servidor, un bicho que el catálogo
+  // no conoce no se puede pelear. O se borraban del mapa o entraban
+  // aquí. Entran, porque son contenido que ya estaba diseñado.
+  //
+  // De dónde salen los números, para que no parezcan de mi cosecha:
+  //
+  //   m_bat    tal cual los declaraba el mapa. Encajan sin tocarlos: un
+  //            nivel 4 flojo con 200 de vida queda justo por debajo del
+  //            Esqueleto (nivel 4, 250), que es lo que pretende ser.
+  //
+  //   m_liche  el mapa le daba 850 de vida, pero ese número venía de la
+  //            escala del cliente, no de esta tabla. Aquí manda la curva
+  //            documentada arriba —vida ≈ 130 × nivel^0,71— que para
+  //            nivel 18 da 1.005. No lleva el ×1,7 de jefe porque no es
+  //            un jefe: es un enemigo duro de zona. Ataque y defensa se
+  //            interpolan entre el Dragón (15) y el Demonio (20), que lo
+  //            rodean. La experiencia y el oro son los del mapa, y ya
+  //            caían entre los de esos dos.
+  m_bat:      { id: 'm_bat',      name: 'Murciélago Oscuro', icon: '🦇', level: 4,  hp: 200,  atk: [30, 50],   def: 6,  xp: 100, gold: [10, 30],   zone: 'mines',  element: 'dark', questKey: 'kill_bat' },
+  m_liche:    { id: 'm_liche',    name: 'Liche Antiguo',     icon: '🧛', level: 18, hp: 1005, atk: [100, 160], def: 34, xp: 780, gold: [200, 400], zone: 'ruins',  element: 'dark', questKey: 'kill_liche' },
 }
 // Tabla de botín server-side (el cliente nunca decide qué cae)
 const LOOT_TABLES = {
@@ -20142,6 +20231,12 @@ const LOOT_TABLES = {
   m_troll_boss: [{ id: 'leather', w: 60, q: [2, 4] }, { id: 'iron_ore', w: 45, q: [2, 4] }, { id: 'sword_alba', w: 12, q: [1, 1] }],
   m_dragon:   [{ id: 'crystal', w: 35, q: [1, 2] }, { id: 'thunder_staff', w: 3, q: [1, 1] }, { id: 'soul_shard', w: 1, q: [1, 1] }, { id: 'potion_hp_big', w: 14, q: [1, 1] }],
   m_demon:    [{ id: 'crystal', w: 30, q: [1, 3] }, { id: 'arcane_orb', w: 4, q: [1, 1] }, { id: 'soul_shard', w: 2, q: [1, 1] }, { id: 'potion_hp_iv', w: 8, q: [1, 1] }],
+  m_bat:      [{ id: 'leather', w: 40, q: [1, 2] }, { id: 'herb', w: 25, q: [1, 1] }],
+  // El Anillo de Hueso se fabricaba (rec_ring, nivel 9) y no caía de
+  // NADA. Un accesorio raro que solo sale de la forja deja la mitad
+  // del recorrido sin usar: ahora también se puede arrancar de un
+  // liche, que es de donde debería salir un anillo de hueso.
+  m_liche:    [{ id: 'crystal', w: 28, q: [1, 2] }, { id: 'bone_ring', w: 6, q: [1, 1] }, { id: 'soul_shard', w: 1, q: [1, 1] }, { id: 'potion_hp_iv', w: 6, q: [1, 1] }],
 }
 const ELEMENT_CHART = { // atacante → defensor con esa resistencia
   fire:   { ice: 1.3, nature: 1.3, water: 0.7, fire: 0.6 },

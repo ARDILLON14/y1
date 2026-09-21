@@ -1,0 +1,9 @@
+# Estado de la partida: lo genera el servidor al arrancar. Entró en el
+# repositorio por accidente al importar, y cada prueba que se ejecuta
+# desde la raíz lo reescribe y ensucia el diff.
+criptomundo-data.json
+criptomundo-data.json.tmp
+backups/
+
+node_modules/
+*.log

@@ -229,5 +229,13 @@ async function run() {
 if (process.argv.includes('--spawn')) {
   const c = spawn('node', [path.join(__dirname, 'criptomundo.js')],
     { env: { ...process.env, PORT, REGISTER_LIMIT_PER_HOUR: '200', DATA_FILE: '/tmp/cm-conc.json', BACKUP_DIR: '/tmp/cm-conc-b' }, stdio: 'ignore' })
+  // El servidor se mataba en un .finally() detrás de run(), y run()
+  // termina en process.exit(): ese .finally() NO llega a ejecutarse
+  // nunca, así que cada ejecución dejaba un servidor vivo con su
+  // puerto ocupado. La siguiente no podía escuchar ahí, hablaba sin
+  // saberlo con el servidor viejo —con las cuentas y los contadores de
+  // la anterior— y fallaba por cosas que no tenían nada que ver.
+  // 'exit' sí se dispara con process.exit().
+  process.on('exit', () => { try { c.kill() } catch {} })
   setTimeout(() => run().finally(() => c.kill()), 3000)
 } else run()

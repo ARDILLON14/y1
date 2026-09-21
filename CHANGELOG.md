@@ -2,6 +2,163 @@
 
 Cada versión con lo que la motivó. Los detalles completos están en `docs/CAMBIOS_VN.md`.
 
+## v32 (en curso) — El mundo deja de pelear consigo mismo
+
+Después de la auditoría completa (`docs/AUDITORIA_V31.md`), el primer paso.
+
+### El mapa resolvía el combate en el navegador
+
+Lo más grave que encontró la auditoría. La pantalla del mundo —la que
+enlaza el launcher, la principal— no le preguntaba nada al servidor al
+pelear. Tiraba ella misma el dado del crítico, el del fallo y el de la
+huida, calculaba el daño, se sumaba el oro y la experiencia y elegía el
+botín de una lista suya que ni siquiera coincidía con el catálogo del
+juego:
+
+```js
+const crit     = Math.random() < 0.18
+const goldGain = roll(...activeCombat.gold)
+const dropped  = Math.random() < 0.65
+```
+
+Nada de eso salía de la pestaña. Dos consecuencias, las dos
+comprobadas: cualquiera con la consola abierta se ponía el oro que
+quisiera, y el progreso no existía —al recargar no quedaba nada, y
+mientras tanto `syncCharacter()` traía cada 8 segundos las cifras de
+verdad y borraba las inventadas delante del jugador.
+
+Lo llamativo es que la alternativa correcta ya estaba escrita y probada.
+`/api/combat/action` es autoritativo, tiene su guion de eventos, su
+telegrafía, su combo y sus fases de jefe, y 31 comprobaciones en verde.
+Esta era la única pantalla del juego que no lo usaba.
+
+**Y la prueba que debería haberlo cazado, no lo cazaba.** Comprobaba que
+el mapa no mandase `COMBAT_ACTION` por `postMessage`. El combate falso
+no usaba `postMessage`: calculaba en local. Pasaba en verde con el
+agujero abierto. La prueba nueva mira el código servido, no un mecanismo
+concreto.
+
+### Dos bichos vivían solo en el cliente
+
+Para poder mandar la pelea al servidor hacía falta que el servidor
+conociera a los enemigos del mapa. Seis de los ocho ya estaban. El
+**Murciélago Oscuro** y el **Liche Antiguo** estaban declarados solo en
+el mundo 2D, con su nivel, su vida y su oro, y no en el catálogo. O se
+borraban del mapa o entraban en el catálogo: entran, porque son
+contenido que ya estaba diseñado.
+
+Los números no son de mi cosecha. El murciélago conserva los suyos tal
+cual, que ya encajaban: un nivel 4 flojo con 200 de vida queda justo por
+debajo del Esqueleto. El liche sigue la curva documentada del propio
+archivo —vida ≈ 130 × nivel^0,71— y su ataque y defensa se interpolan
+entre el Dragón y el Demonio, que lo rodean en la tabla.
+
+De paso, el liche suelta el **Anillo de Hueso**, que hasta ahora solo
+salía de la forja y no caía de ningún enemigo.
+
+### La poción del atajo curaba de la nada
+
+La tecla Q curaba entre 120 y 200 de vida sin gastar nada del
+inventario. Una poción infinita. Ahora pasa por `/api/player/use`, que
+descuenta el objeto y ya lo usaba la pantalla de combate.
+
+### La prueba de misiones fallaba una de cada tres veces
+
+`test-misiones-mundo.js` mata arañas hasta reunir 10 hierbas con un
+presupuesto de 150 ataques. Ese número valía antes del rebalanceo de la
+v31; con `ESCALA_TURNOS` en vida 1,6 y daño 1,4 cada araña cuesta 7,6
+ataques y el jugador de nivel 1 muere 13 veces por el camino. Medido:
+hacen falta unos 168. Se quedaba corta por un 12%, justo en el filo.
+
+Como `npm test` encadena los archivos con `&&`, ese fallo dejaba **26 de
+los 32 archivos de prueba sin ejecutar**, y por algo que no tenía nada
+que ver con lo que se estuviera tocando. El presupuesto sube a 450 y el
+mensaje de fallo ahora dice ataques, bajas y muertes, para que la
+próxima vez no haya que instrumentarla a mano.
+
+### Otra prueba intermitente: el combo del combate por turnos
+
+`test-turnos.js` fallaba en una de cada diez ejecuciones, y no por lo
+que se estuviera tocando. Midiendo la secuencia real turno a turno sale
+siempre la misma contra el Gólem, que es el bicho que la prueba elige:
+
+```
+a1  a2  a0  B0  a1  a0        (a = ataque, B = bloqueo)
+     ^^      ^^
+     |       bloqueo: el combo se pone a cero
+     única ventana en la que el combo llega a 2
+```
+
+El combo se reinicia al bloquear y al comerse el golpe anunciado del
+enemigo, y el jugador de nivel 1 muere contra el Gólem en seis turnos.
+O sea que había UNA sola oportunidad de observar el combo en todo el
+combate, y un fallo del ataque —un 5% por golpe— la cerraba.
+
+Bloqueando uno de cada seis turnos en vez de uno de cada cuatro quedan
+dos ventanas, y hace falta mala suerte en las dos: baja del 10% a cerca
+del 1%. El combate dura lo mismo y se sigue bloqueando. Además, ahora el
+mensaje de fallo imprime la secuencia completa.
+
+### Cada prueba dejaba su servidor vivo
+
+Salió persiguiendo un fallo fantasma. `test-invitaciones.js` daba 13 OK ·
+7 fallidas dentro de la suite y 20 de 20 en aislado, con un `429` de
+"demasiadas cuentas creadas desde esta red" que no venía a cuento.
+
+La causa: diecisiete archivos de prueba matan su servidor así.
+
+```js
+setTimeout(() => run().finally(() => c.kill()), 3000)
+```
+
+`run()` termina con `process.exit(...)`, así que ese `.finally()` no se
+ejecuta nunca. Cada ejecución dejaba un servidor vivo ocupando su puerto,
+y la siguiente hablaba sin saberlo con el servidor VIEJO —con las cuentas
+y los contadores de la anterior— y fallaba por cosas ajenas a lo que se
+estuviera tocando.
+
+Ahora lo matan desde `process.on('exit')`, que sí se dispara con
+`process.exit()`. Comprobado: cuatro pruebas seguidas dejaban cuatro
+servidores y ahora dejan cero.
+
+### Detalles
+
+- Los botones de combate del mapa son `<div>`, así que ponerles
+  `.disabled` no hacía nada: se podían pulsar en mitad del turno. Ahora
+  se apagan con una clase de verdad.
+- Al morir un enemigo se quedaba su sombra pintada en el mapa.
+- El desvanecido del enemigo muerto reventaba si pulsabas "Continuar"
+  antes de que acabara la animación.
+- La vida del enemigo ya no se enseña con la ficha del mapa: se escala a
+  quien lo pelea, así que hasta el primer turno no hay número de verdad
+  y se muestra una raya en vez de una cifra falsa.
+- `criptomundo-mundo2d-2.js` pasó de los 70 KB por módulo que vigila
+  `test-build.js`. El combate se va a un tercer módulo, igual que se
+  hizo con el combate por turnos.
+- Los botones de combate decían "Magia 40 MP" y "Sanar 30 MP", que era
+  lo que cobraba el combate falso. El de verdad no cobra eso: la magia
+  cuesta lo que cueste la habilidad de TU clase, entre 20 y 45, y sanar
+  no gasta maná sino una poción. Un número fijo ahí era mentira para
+  tres clases de cuatro.
+- Los bichos del mapa traían su propia vida, ataque, oro y experiencia,
+  en una escala distinta a la del servidor. Eran los números con los que
+  el navegador se repartía el botín. Se quedan solo los de dibujo.
+- `criptomundo-data.json` y `backups/` entraron en el repositorio al
+  importar y cada prueba los reescribía. Ahora están en `.gitignore`.
+- El aviso de golpe fuerte del enemigo no se veía en el mapa: el campo
+  se llama `name` y se estaba leyendo como `nombre`. La mecánica existía
+  y estaba probada en el servidor desde hacía versiones; el jugador no
+  la veía llegar.
+
+### Lo que el mapa sigue sin tener
+
+El combate del mapa es una versión reducida del de
+`criptomundo-combat.html`: tiene golpe, magia, sanar y huir, y no tiene
+selector de habilidades, bloqueo ni elección de objeto. Por eso el aviso
+de golpe fuerte no dice "bloquea o interrumpe" como en la pantalla
+completa: prometer una acción que no está es peor que no avisar. Unificar
+las dos pantallas es trabajo del paso de UI/UX.
+
 ## v31 — Revisión completa: materiales, código muerto y fluidez
 
 Cuatro encargos: comprobar que todos los materiales de las armas se pueden conseguir, que todo lo que llevamos funciona, que no queda código que no hace nada, y que el juego vaya más fluido. Para los tres primeros hice una herramienta; el cuarto resultó ser otra cosa distinta de la que parecía.

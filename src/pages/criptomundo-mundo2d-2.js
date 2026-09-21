@@ -41,10 +41,14 @@ const ZONES = {
     npcs:[
       { id:'elara', x:480, y:200, sprite:'🌿', name:'Elara la Guardabosque', role:'Guardiana del Bosque', greeting:'Silencio... El bosque habla de peligro. Una plaga corrompe los árboles del este. Necesito tu ayuda.', choices:['¿Dónde están?','Puedo intentarlo','Demasiado peligroso'] },
     ],
+    // Los bichos del mapa dicen DÓNDE están y cómo se dibujan. Lo que
+    // pegan, lo que aguantan y lo que sueltan lo dice el servidor: esos
+    // números vivían aquí duplicados y con otra escala, y el combate
+    // del navegador los usaba para repartirse el oro él solo.
     monsters:[
-      { id:'troll',    sprite:'🧟', name:'Troll Sombrío',   level:5,  hp:520,  atk:[55,85],  gold:[60,130],  xp:280,  loot:'uncommon' },
-      { id:'spider',   sprite:'🕷️', name:'Araña Venenosa', level:3,  hp:380,  atk:[40,70],  gold:[30,70],   xp:180,  loot:'common'   },
-      { id:'skeleton', sprite:'💀', name:'Esqueleto',       level:4,  hp:300,  atk:[45,75],  gold:[25,65],   xp:160,  loot:'common'   },
+      { id:'troll',    servidor:'m_troll',    sprite:'🧟', name:'Troll Sombrío',   level:5  },
+      { id:'spider',   servidor:'m_spider',   sprite:'🕷️', name:'Araña Venenosa', level:3  },
+      { id:'skeleton', servidor:'m_skeleton', sprite:'💀', name:'Esqueleto',       level:4  },
     ],
     exits:{ south:'pueblo', east:'ruinas' },
     structures:[
@@ -67,8 +71,8 @@ const ZONES = {
       { id:'thorn', x:400, y:200, sprite:'⛏️', name:'Thorn el Minero', role:'Jefe de las Minas', greeting:'Maldición... Los gólems de piedra han bloqueado el tercer túnel. ¿Puedes eliminarlos?', choices:['¿Cuántos hay?','De acuerdo','Demasiado riesgo'] },
     ],
     monsters:[
-      { id:'golem',   sprite:'🗿', name:'Gólem de Piedra',  level:8,  hp:900,  atk:[85,125], gold:[100,200], xp:520, loot:'rare'     },
-      { id:'bat',     sprite:'🦇', name:'Murciélago Oscuro',level:4,  hp:200,  atk:[30,50],  gold:[10,30],   xp:100, loot:'common'   },
+      { id:'golem',   servidor:'m_golem',  sprite:'🗿', name:'Gólem de Piedra',  level:8  },
+      { id:'bat',     servidor:'m_bat',    sprite:'🦇', name:'Murciélago Oscuro',level:4  },
     ],
     exits:{ west:'pueblo', south:'ruinas' },
     structures:[
@@ -90,9 +94,9 @@ const ZONES = {
       { id:'draven', servidor:'npc_draven', x:400, y:180, sprite:'🗡️', name:'Capitán Draven', role:'Comandante de la Guardia', greeting:'¡Soldado! Las ruinas están infestadas. Necesito un agente para una misión de reconocimiento urgente.', choices:['Estoy listo','¿Qué riesgo?','Busca a otro'] },
     ],
     monsters:[
-      { id:'demon',  sprite:'👿', name:'Demonio Abismal',   level:20, hp:1100, atk:[115,175],gold:[280,480], xp:900,  loot:'epic'     },
-      { id:'dragon', sprite:'🐉', name:'Dragón Menor',      level:15, hp:700,  atk:[95,155], gold:[180,380], xp:680,  loot:'epic'     },
-      { id:'liche',  sprite:'💀', name:'Liche Antiguo',     level:18, hp:850,  atk:[100,160],gold:[200,400], xp:780,  loot:'rare'     },
+      { id:'demon',  servidor:'m_demon',  sprite:'👿', name:'Demonio Abismal',   level:20 },
+      { id:'dragon', servidor:'m_dragon', sprite:'🐉', name:'Dragón Menor',      level:15 },
+      { id:'liche',  servidor:'m_liche',  sprite:'🧛', name:'Liche Antiguo',     level:18 },
     ],
     exits:{ north:'minas', west:'bosque' },
     structures:[
@@ -103,12 +107,6 @@ const ZONES = {
   },
 }
 
-const LOOT_ITEMS = {
-  common:   [{icon:'🪨',name:'Mineral de Hierro'},{icon:'🌿',name:'Hierba Medicinal'},{icon:'🧪',name:'Poción de Vida'}],
-  uncommon: [{icon:'⚔️',name:'Espada del Alba'},{icon:'🧶',name:'Cuero Curtido'},{icon:'💊',name:'Poción de Maná'}],
-  rare:     [{icon:'💎',name:'Cristal de Hielo'},{icon:'🏹',name:'Arco Élfico'},{icon:'🛡️',name:'Escudo de Roble'}],
-  epic:     [{icon:'⚡',name:'Cetro del Trueno'},{icon:'🔮',name:'Orbe Arcano'},{icon:'☠️',name:'Veneno del Abismo'}],
-}
 
 // ═══════════════════════════════════════════════════
 // PLAYER STATE
@@ -558,7 +556,7 @@ class WorldScene extends Phaser.Scene {
         const sombraMon = this.add.ellipse(mx, my + 12, 22, 8, 0x000000, 0.3).setDepth(6)
 
         this.monsterTexts.push(t)
-        this.monsterData.push({ ...mon, label: lbl, sombra: sombraMon, currentHp: mon.hp })
+        this.monsterData.push({ ...mon, label: lbl, sombra: sombraMon })
         this.monsterWalkTimers.push(Phaser.Math.Between(0, 120))
       }
     })
@@ -777,16 +775,18 @@ class WorldScene extends Phaser.Scene {
 
   triggerCombat(monsterData, monsterText, index) {
     if (activeCombat) return
-    activeCombat = { ...monsterData, spriteText: monsterText, index, currentHp: monsterData.hp }
+    activeCombat = { ...monsterData, spriteText: monsterText, index }
 
     document.getElementById('cp-sprite').textContent = monsterData.sprite
     document.getElementById('cp-name').textContent   = monsterData.name
-    document.getElementById('cp-hp-txt').textContent = \`\${monsterData.hp} / \${monsterData.hp} HP\`
-    document.getElementById('cp-hp-bar').style.width = '100%'
+    // La vida del enemigo se escala a quien lo pelea, así que la ficha
+    // del mapa no sirve para enseñarla: hasta el primer turno no hay
+    // número de verdad, y un número inventado es peor que una raya.
+    pintarVidaEnemigo(null, null)
     document.getElementById('cp-log').innerHTML      = ''
     document.getElementById('cp-close').style.display= 'none'
     document.getElementById('combat-popup').classList.add('open')
-    document.querySelectorAll('.cp-action').forEach(b => b.disabled = false)
+    accionesHabilitadas(true)
 
     addLog(\`⚔️ Combate con \${monsterData.sprite} \${monsterData.name} (Nv.\${monsterData.level})!\`, 'combat')
     this.cameras.main.flash(200, 220, 38, 38, true)
@@ -902,147 +902,6 @@ class WorldScene extends Phaser.Scene {
   }
 }
 
-// ═══════════════════════════════════════════════════
-// COMBAT LOGIC
-// ═══════════════════════════════════════════════════
-
-function combatAction(type) {
-  if (!activeCombat || combatBusy) return
-  combatBusy = true
-  document.querySelectorAll('.cp-action').forEach(b => b.disabled = true)
-
-  const mp_costs = { attack:0, magic:40, heal:30, flee:0 }
-  const cost = mp_costs[type] ?? 0
-
-  if (PLAYER.mp < cost) {
-    addCombatLog(\`🔷 No tienes suficiente Maná.\`, 'miss')
-    combatBusy = false
-    document.querySelectorAll('.cp-action').forEach(b => b.disabled = false)
-    return
-  }
-  PLAYER.mp = Math.max(0, PLAYER.mp - cost)
-  updateBars()
-
-  let playerDmg = 0
-
-  if (type === 'flee') {
-    const fled = Math.random() < 0.45
-    if (fled) {
-      addCombatLog('💨 ¡Huiste exitosamente!', 'miss')
-      addLog('💨 Huiste del combate.', 'combat')
-      setTimeout(() => closeCombat(true), 800)
-      return
-    } else {
-      addCombatLog('💨 Intentas huir pero fallas...', 'miss')
-    }
-  } else if (type === 'attack') {
-    const crit = Math.random() < 0.18
-    const miss = Math.random() < 0.06
-    if (miss) {
-      addCombatLog('⚔️ Tu ataque falla en el blanco.', 'miss')
-    } else {
-      playerDmg = Math.max(1, roll(...PLAYER.atk) - Math.floor(activeCombat.atk[0] * 0.2))
-      if (crit) playerDmg = Math.floor(playerDmg * 1.8)
-      addCombatLog(\`⚔️ Atacas.\${crit?' ¡CRÍTICO!':''} \${playerDmg} daño.\`, 'hit')
-    }
-  } else if (type === 'magic') {
-    playerDmg = Math.max(10, roll(PLAYER.int*2, PLAYER.int*3) - 10)
-    addCombatLog(\`🔥 Bola de Fuego! \${playerDmg} daño mágico.\`, 'hit')
-  } else if (type === 'heal') {
-    const h = roll(120,200)
-    PLAYER.hp = Math.min(PLAYER.hp + h, PLAYER.maxHp)
-    addCombatLog(\`💚 Sanación: +\${h} HP.\`, 'heal')
-    updateBars()
-  }
-
-  if (playerDmg > 0) {
-    activeCombat.currentHp = Math.max(0, activeCombat.currentHp - playerDmg)
-    const pct = (activeCombat.currentHp / activeCombat.hp * 100).toFixed(1)
-    document.getElementById('cp-hp-bar').style.width = pct + '%'
-    document.getElementById('cp-hp-txt').textContent = \`\${activeCombat.currentHp} / \${activeCombat.hp} HP\`
-  }
-
-  // Enemy died?
-  if (activeCombat.currentHp <= 0) {
-    onEnemyKilled()
-    return
-  }
-
-  // Enemy turn
-  setTimeout(() => {
-    const eDmg = Math.max(1, roll(...activeCombat.atk) - Math.floor(PLAYER.def * 0.4))
-    PLAYER.hp  = Math.max(0, PLAYER.hp - eDmg)
-    addCombatLog(\`\${activeCombat.sprite} \${activeCombat.name} ataca. \${eDmg} daño.\`, 'hit')
-    updateBars()
-
-    if (PLAYER.hp <= 0) {
-      onPlayerDied()
-      return
-    }
-
-    combatBusy = false
-    document.querySelectorAll('.cp-action').forEach(b => b.disabled = false)
-  }, 600)
-}
-
-function onEnemyKilled() {
-  const goldGain = roll(...(activeCombat.gold ?? [20,60]))
-  const xpGain   = activeCombat.xp ?? 150
-  PLAYER.gold   += goldGain
-  PLAYER.xp     += xpGain
-  PLAYER.kills  ++
-
-  document.getElementById('hud-gold').textContent  = PLAYER.gold.toLocaleString()
-  document.getElementById('hud-crypto').textContent = PLAYER.crypto
-  document.getElementById('hud-kills').textContent  = PLAYER.kills
-
-  const pool  = LOOT_ITEMS[activeCombat.loot ?? 'common']
-  const item  = pool[Math.floor(Math.random() * pool.length)]
-  const dropped = Math.random() < 0.65
-
-  addCombatLog(\`💀 ¡\${activeCombat.name} derrotado!\`, 'hit')
-  addCombatLog(\`🪙 +\${goldGain} oro  ✨ +\${xpGain} EXP\`, 'heal')
-  if (dropped) {
-    addCombatLog(\`\${item.icon} ¡Obtuviste: \${item.name}!\`, 'heal')
-    addLog(\`\${item.icon} Loot: \${item.name}\`, 'loot')
-  }
-  addLog(\`☠️ Derrotaste a \${activeCombat.sprite} \${activeCombat.name} (+\${goldGain} 🪙 +\${xpGain} EXP)\`, 'combat')
-
-  // Remove monster from world
-  if (activeCombat.spriteText) {
-    gameScene.tweens.add({ targets: activeCombat.spriteText, alpha: 0, y: activeCombat.spriteText.y - 20, duration: 400, onComplete: () => { activeCombat.spriteText.destroy() } })
-    if (gameScene.monsterData[activeCombat.index]?.label) {
-      gameScene.monsterData[activeCombat.index].label.destroy()
-    }
-    gameScene.monsterTexts.splice(activeCombat.index, 1)
-    gameScene.monsterData.splice(activeCombat.index, 1)
-    gameScene.monsterWalkTimers.splice(activeCombat.index, 1)
-  }
-
-  showToast(\`⚔️ Victoria! +\${goldGain} 🪙 +\${xpGain} EXP\`)
-  updateBars()
-  document.getElementById('cp-close').style.display = 'block'
-  combatBusy = false
-}
-
-function onPlayerDied() {
-  const lost = Math.floor(PLAYER.gold * 0.08)
-  PLAYER.gold = Math.max(0, PLAYER.gold - lost)
-  PLAYER.hp   = Math.floor(PLAYER.maxHp * 0.5)
-  addCombatLog(\`☠️ Has sido derrotado. Pierdes \${lost} oro.\`, 'miss')
-  addLog(\`☠️ Derrotado. Respawn en el Pueblo (-\${lost} 🪙)\`, 'combat')
-  updateBars()
-  document.getElementById('hud-gold').textContent = PLAYER.gold.toLocaleString()
-  document.getElementById('cp-close').style.display = 'block'
-  combatBusy = false
-
-  // Respawn in pueblo after delay
-  setTimeout(() => {
-    closeCombat(true)
-    gameScene.changeZone('pueblo')
-  }, 1500)
-}
-
 function closeCombat(force = false) {
   if (combatBusy && !force) return
   document.getElementById('combat-popup').classList.remove('open')
@@ -1149,12 +1008,19 @@ function triggerAction(type) {
       if (activeCombat) combatAction('attack')
       else addLog('⚔️ Sin enemigo cercano.', 'system')
     },
-    potion: () => {
-      const h = roll(120,200)
-      PLAYER.hp = Math.min(PLAYER.hp + h, PLAYER.maxHp)
+    // Curaba entre 120 y 200 de vida sin gastar nada del inventario:
+    // una poción infinita. El endpoint que sí descuenta el objeto ya
+    // existía y lo usa la pantalla de combate.
+    potion: async () => {
+      const r = await apiPost('/api/player/use', { itemId: 'potion_hp' })
+      if (!r.ok) {
+        showToast('⚠️ ' + (r.data.error || 'No tienes pociones'))
+        return
+      }
+      PLAYER.hp = r.data.hp; PLAYER.mp = r.data.mp
       updateBars()
-      showToast(\`💚 Poción usada: +\${h} HP\`)
-      addLog(\`🧪 Usaste una Poción de Vida (+\${h} HP)\`, 'system')
+      showToast('💚 Poción usada: +' + r.data.curado + ' HP')
+      addLog('🧪 Usaste una Poción de Curación I (+' + r.data.curado + ' HP)', 'system')
     },
     magic: () => {
       if (activeCombat) combatAction('magic')
@@ -1189,7 +1055,6 @@ function openModule(name) {
   }
 }
 
-function roll(min, max) { return Math.floor(Math.random()*(max-min+1))+min }
 
 // ═══════════════════════════════════════════════════
 // PHASER CONFIG

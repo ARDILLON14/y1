@@ -2,6 +2,17 @@
 
 Fecha: 2026-09-21 · Base auditada: commit de importación del zip `criptomundo-v31`.
 
+> **Estado.** Este documento describe el proyecto TAL Y COMO SE AUDITÓ. No se
+> reescribe a medida que se arregla: es la foto de partida, y sirve para
+> comprobar contra qué se compara cada paso. Lo ya resuelto se marca al
+> principio de su apartado, con el paso que lo arregló.
+>
+> Resuelto hasta ahora:
+> - §2.1 combate simulado en el cliente del mundo 2D — **STEP 1**
+> - §0 `test-misiones-mundo.js` intermitente — **STEP 1**
+> - §5.6 cada prueba dejaba su servidor vivo — **STEP 1**
+> - §5.8 `test-turnos.js` intermitente — **STEP 1**
+
 Este documento es el resultado de la FASE 0. **No se ha modificado ni una
 línea de gameplay.** Todo lo que sigue está comprobado contra el código o
 medido ejecutando el juego; donde hay una cifra, hay una medición detrás.
@@ -39,6 +50,8 @@ En total **790 comprobaciones**, todas en verde en una pasada limpia. La
 base es sana: lo que hay escrito está probado.
 
 ### El único fallo: `test-misiones-mundo.js` es intermitente
+
+> ✅ **Resuelto en el STEP 1.** El presupuesto sube de 150 a 450 ataques.
 
 No está roto: está mal dimensionado. La prueba mata arañas hasta reunir 10
 hierbas, con un presupuesto de 150 ataques. Medido contra el servidor real,
@@ -103,6 +116,11 @@ ECONOMY
 ## 2. Lo que está ROTO
 
 ### 2.1 El mundo 2D simula el combate en el navegador — CRÍTICO
+
+> ✅ **Resuelto en el STEP 1.** El combate del mapa pasa por
+> `/api/combat/action`. El código vive ahora en
+> `src/pages/criptomundo-mundo2d-3.js` y lo cubre `test-mundo-combate.js`,
+> que además EJECUTA el módulo de la página contra el servidor.
 
 `src/pages/criptomundo-mundo2d-2.js`, líneas 929-1010.
 
@@ -369,7 +387,70 @@ destruidos/hora, precio medio por objeto y volumen del mercado.
 - ~120 líneas de CSS de PvP sin HTML (§2.3).
 - 9 scripts `aplicar-*.js` en la raíz: parches de una sola vez ya aplicados.
 
-### 5.6 Lo que NO es un problema (comprobado y descartado)
+### 5.6 Cada prueba deja su servidor vivo
+
+> ✅ **Resuelto en el STEP 1.** Los 17 archivos afectados matan ahora su
+> servidor desde `process.on('exit')`. Comprobado: 4 pruebas seguidas
+> dejaban 4 servidores y ahora dejan 0.
+
+Cada archivo de prueba arranca su propio servidor y lo mata así:
+
+```js
+setTimeout(() => run().finally(() => c.kill()), 3000)
+```
+
+Pero `run()` termina con `process.exit(...)`. Ese `.finally()` **no se
+ejecuta nunca**: el proceso ya ha muerto. Así que cada ejecución deja un
+servidor vivo con su puerto ocupado, para siempre.
+
+Lo caro no es el proceso colgado: es lo que provoca. La siguiente
+ejecución de esa misma prueba no puede escuchar en ese puerto, así que
+habla sin saberlo con el servidor VIEJO, que arrastra las cuentas y los
+contadores de la ejecución anterior. Durante esta auditoría eso dejó
+`test-invitaciones.js` en 13 OK · 7 fallidas con un `429` de "demasiadas
+cuentas creadas desde esta red", mientras en aislado pasaba 20 de 20.
+
+Diecisiete de los treinta y tres archivos tenían este patrón. Los que
+usaban `process.on('exit', ...)` estaban bien: ese sí se dispara con
+`process.exit()`.
+
+No afecta a jugar, solo a probar. Pero cuesta horas de diagnóstico y,
+peor, hace dudar de fallos que sí son reales.
+
+### 5.7 La suite no se puede ejecutar en paralelo
+
+El registro está limitado a 20 cuentas por hora y por IP
+(`REGISTER_LIMIT_PER_HOUR`). Varios archivos de prueba a la vez contra
+`127.0.0.1` se lo comen entre todos y empiezan a fallar con `429`. Es
+correcto que el límite exista; lo que falta es que las pruebas lo sepan.
+
+### 5.8 `test-turnos.js` también era intermitente
+
+> ✅ **Resuelto en el STEP 1.**
+
+Salió durante el propio STEP 1: fallaba en una de cada diez ejecuciones
+con `combo visto: false`, sin relación con lo que se estuviera tocando.
+
+La prueba observa el combo atacando y bloqueando uno de cada cuatro
+turnos. El combo se reinicia al bloquear Y al comerse el golpe anunciado
+del enemigo. Medida la secuencia real contra el Gólem, que es el bicho
+que la prueba elige, sale siempre la misma:
+
+```
+a1  a2  a0  B0  a1  a0        (a = ataque, B = bloqueo)
+     ^^
+     única ventana en la que el combo llega a 2
+```
+
+El jugador de nivel 1 muere contra el Gólem en seis turnos, así que solo
+había una oportunidad de ver el combo, y el 5% de fallo del ataque la
+cerraba. Bloqueando uno de cada seis turnos quedan dos ventanas y el
+fallo baja a cerca del 1%.
+
+Es el mismo patrón que §0: una prueba cuyo presupuesto de observación se
+quedó corto cuando el balance cambió debajo.
+
+### 5.9 Lo que NO es un problema (comprobado y descartado)
 
 Para que no se vuelva a mirar:
 

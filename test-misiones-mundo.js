@@ -50,16 +50,37 @@ async function run() {
   check('entregar sin completar rechazado', r.status === 400)
 
   console.log('\n── PROGRESO POR EVENTOS REALES ──')
-  let prog = 0, guard = 0
-  while (prog < 10 && guard++ < 150) {
+  // El presupuesto de ataques no es decorativo y estaba mal medido.
+  //
+  // La prueba mata arañas hasta reunir las 10 hierbas que pide q_herbs.
+  // Con 150 ataques pasaba cuando se inventó; después del rebalanceo de
+  // la v31 —ESCALA_TURNOS pasó a vida 1,6 y daño 1,4— cada araña cuesta
+  // 7,6 ataques y el jugador de nivel 1 muere 13 veces por el camino.
+  // Medido contra el servidor real: hacen falta unos 168 ataques, o sea
+  // un 12% más de los que había. Justo en el filo: de siete ejecuciones
+  // fallaba dos.
+  //
+  // Y como npm test encadena los 32 archivos con &&, ese fallo dejaba
+  // 26 archivos sin ejecutar por algo que no tenía nada que ver con lo
+  // que se estuviera tocando.
+  //
+  // 450 es tres veces lo que la medición pide, así que absorbe la mala
+  // suerte del botín. No alarga la prueba en la práctica: se sale en
+  // cuanto llega a 10, que es sobre el ataque 170.
+  let prog = 0, guard = 0, bajas = 0, muertes = 0
+  while (prog < 10 && guard++ < 450) {
     const c = await req('POST', '/api/combat/action', { monsterId: 'm_spider', action: 'attack' })
     if (c.status === 200) {
-      if (c.body.playerDied) await req('POST', '/api/player/respawn', {})
+      if (c.body.enemyDied) bajas++
+      if (c.body.playerDied) { muertes++; await req('POST', '/api/player/respawn', {}) }
       for (const q of c.body.questUpdates || []) prog = Math.max(prog, q.current)
     }
     await sleep(380)
   }
-  check('la recolección avanza con el botín real del combate', prog >= 10, `progreso ${prog}`)
+  // Si algún día vuelve a fallar, que se vea POR QUÉ sin tener que
+  // instrumentar la prueba a mano.
+  check('la recolección avanza con el botín real del combate', prog >= 10,
+        `progreso ${prog} tras ${guard} ataques · ${bajas} arañas · ${muertes} muertes`)
 
   r = await req('POST', '/api/quests', { questId: 'q_herbs', action: 'turnin' })
   check('entregar con objetivos completos', r.status === 200 && r.body.rewards.gold > 0)
@@ -101,5 +122,13 @@ async function run() {
 
 if (process.argv.includes('--spawn')) {
   const c = spawn('node', [__dirname + '/criptomundo.js'], { env: { ...process.env, PORT, DATA_FILE: '/tmp/cm-misiones-' + Date.now() + '.json' }, stdio: 'ignore' })
+  // El servidor se mataba en un .finally() detrás de run(), y run()
+  // termina en process.exit(): ese .finally() NO llega a ejecutarse
+  // nunca, así que cada ejecución dejaba un servidor vivo con su
+  // puerto ocupado. La siguiente no podía escuchar ahí, hablaba sin
+  // saberlo con el servidor viejo —con las cuentas y los contadores de
+  // la anterior— y fallaba por cosas que no tenían nada que ver.
+  // 'exit' sí se dispara con process.exit().
+  process.on('exit', () => { try { c.kill() } catch {} })
   setTimeout(() => run().finally(() => c.kill()), 3000)
 } else run()

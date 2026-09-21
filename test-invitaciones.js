@@ -107,5 +107,9 @@ if (process.argv.includes('--spawn')) {
     { env: { ...process.env, PORT: String(PORT), DATA_FILE: '/tmp/cm-inv-abierto.json', BACKUP_DIR: '/tmp/cm-inv-b1' }, stdio: 'ignore' })
   const cerrado = spawn('node', [__dirname + '/criptomundo.js'],
     { env: { ...process.env, PORT: String(PORT_CERRADO), INVITE_ONLY: '1', ADMIN_TOKEN: TOKEN, DATA_FILE: '/tmp/cm-inv-cerrado.json', BACKUP_DIR: '/tmp/cm-inv-b2' }, stdio: 'ignore' })
+  // run() termina en process.exit(), así que ese .finally() no llega a
+  // ejecutarse y los DOS servidores quedaban vivos ocupando sus
+  // puertos. 'exit' sí se dispara con process.exit().
+  process.on('exit', () => { try { abierto.kill(); cerrado.kill() } catch {} })
   setTimeout(() => run().finally(() => { abierto.kill(); cerrado.kill() }), 3500)
 } else run()
