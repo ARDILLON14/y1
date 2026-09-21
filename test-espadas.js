@@ -50,8 +50,13 @@ async function run(){
  await req('POST','/api/player/equip',{uid:pico.uid});
  const rocas=(await req('GET','/api/recursos?zona=forest')).body.nodos.filter(n=>n.util==='pico'&&n.nivel===1);
  const cuenta=async id=>((await req('GET','/api/inventory')).body.inventory||[]).filter(i=>i.itemId===id).reduce((a,i)=>a+i.quantity,0);
+ // Picar como se pica en el juego: de pie junto a la roca y esperando
+ // a recuperar el golpe. El servidor exige las dos cosas desde el §10.
+ const dormir=ms=>new Promise(x=>setTimeout(x,ms));
  for(const r of rocas){ if(await cuenta('stone')>=5)break;
-   for(let i=0;i<80;i++){const g=await req('POST','/api/recursos/golpear',{nodoId:r.id}); if(g.status!==200||g.body.agotado)break} }
+   for(let i=0;i<80;i++){ await dormir(470);
+     const g=await req('POST','/api/recursos/golpear',{nodoId:r.id,pos:{x:r.x,y:r.y}});
+     if(g.status!==200||g.body.agotado)break} }
  ok('se mina piedra suficiente', await cuenta('stone')>=5, 'piedra='+await cuenta('stone'));
  await req('POST','/api/crafting',{recipeId:'rec_mango_madera',quantity:1});
  let r=await req('POST','/api/crafting',{recipeId:'rec_espada_piedra',quantity:1});

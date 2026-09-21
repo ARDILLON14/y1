@@ -141,10 +141,13 @@ async function forjarEspadaPiedra() {
     .filter(i => i.itemId === id).reduce((a, i) => a + i.quantity, 0)
   const rocas = ((await req('GET', '/api/recursos?zona=forest')).body.nodos || [])
     .filter(n => n.util === 'pico' && n.nivel === 1)
+  // Picar como se pica en el juego: junto a la roca y esperando a
+  // recuperar el golpe. El servidor exige las dos cosas desde el §10.
   for (const r of rocas) {
     if (await cuenta('stone') >= 5) break
     for (let i = 0; i < 80; i++) {
-      const g = await req('POST', '/api/recursos/golpear', { nodoId: r.id })
+      await sleep(470)
+      const g = await req('POST', '/api/recursos/golpear', { nodoId: r.id, pos: { x: r.x, y: r.y } })
       if (g.status !== 200 || g.body.agotado) break
     }
   }
