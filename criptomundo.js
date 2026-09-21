@@ -24120,16 +24120,83 @@ function entradaArena(username, entrada) {
   e.esquivar = !!entrada.esquivar
 }
 
+// ── UN GOLPE DURA ALGO ─────────────────────────────────────────────
+//
+// Antes el daño se aplicaba EN EL MISMO INSTANTE en que llegaba la
+// intención de atacar. Pulsabas y el enemigo perdía vida, sin más. Eso
+// tiene dos consecuencias feas:
+//
+//   · todas las armas se sienten igual. Un mandoble de 620 ms y una
+//     daga de 300 impactan los dos al instante; lo único que cambia es
+//     cuánto tardas en volver a pulsar. El peso del arma no existe.
+//   · no hay nada que esquivar. Si el golpe no tiene anticipación, no
+//     hay ventana en la que apartarse, y el combate se reduce a quién
+//     pulsa más rápido.
+//
+// Ahora un golpe tiene tres tiempos: se prepara, está vivo, y se
+// recupera. El daño solo existe mientras está VIVO.
+//
+//   ANTICIPACIÓN   el gesto arranca, todavía no toca a nadie
+//   ACTIVO         el filo está fuera: aquí y solo aquí hace daño
+//   RECUPERACIÓN   el resto, hasta poder volver a pegar
+//
+// DE DÓNDE SALEN LOS NÚMEROS
+// De la cadencia del arma, que ya está en el catálogo: un arma lenta se
+// prepara más. Y los tres tiempos SUMAN la cadencia, así que el daño
+// por segundo no se mueve ni un punto. Lo que cambia no es cuánto
+// pegas, es cuándo llega. Los topes evitan los dos extremos: que una
+// daga tenga una anticipación imperceptible y que un cetro se quede
+// congelado medio segundo antes de tocar.
+function ventanasDe(arma) {
+  const c = arma.cadenciaMs
+  const anticipacion = Math.round(limitar(c * 0.30, 60, 220))
+  const activo = Math.round(limitar(c * 0.22, 60, 160))
+  return { anticipacion, activo, recuperacion: Math.max(0, c - anticipacion - activo) }
+}
+
+// Empezar el gesto. Aquí NO se hace daño a nadie: solo se apunta cuándo
+// empieza y cuándo acaba la parte que sí lo hace.
 function golpear(p, ahora) {
   const j = p.jugador
   const arma = j.arma
   if (ahora < j.proxGolpe) return
   j.proxGolpe = ahora + arma.cadenciaMs
+  const v = ventanasDe(arma)
+  j.golpe = {
+    desde: ahora + v.anticipacion,
+    hasta: ahora + v.anticipacion + v.activo,
+    // A quién ya ha tocado ESTE golpe. Sin esto, una ventana activa de
+    // 160 ms abarca dos pasos de 100 y el mismo barrido pegaría dos
+    // veces al mismo bicho.
+    tocados: [],
+    disparado: false,
+    ang: j.mirando,
+  }
   // El arma decide cuánto dura el gesto, pero con techo: con una
   // cadencia de 620 ms el mandoble se veía en cámara lenta.
   animIniciar(j, 'attack', ahora, Math.max(180, Math.min(arma.cadenciaMs * 0.8, 420)))
+  // La pantalla necesita saber que el gesto ha empezado para pintar la
+  // anticipación; antes solo se enteraba del impacto.
+  p.sucesos.push({ t: 'gesto', ms: v.anticipacion, activo: v.activo, arma: arma.id })
+}
+
+// Resolver el gesto en curso. Se llama en CADA paso, no al pulsar: por
+// eso un enemigo que se mete en el barrido mientras el filo está fuera
+// se lo come, que es lo que se espera de un arco de ataque.
+function resolverGolpe(p, ahora) {
+  const j = p.jugador
+  const g = j.golpe
+  if (!g) return
+  if (ahora < g.desde) return          // todavía se está preparando
+  if (ahora > g.hasta) { j.golpe = null; return }   // ya se recupera
+
+  const arma = j.arma
 
   if (arma.proyectil) {
+    // Se dispara UNA vez, al abrirse la ventana. La flecha sale cuando
+    // el arco termina de tensarse, no cuando se pulsa.
+    if (g.disparado) return
+    g.disparado = true
     p.proyectiles.push(crearProyectil({
       dueño: 'jugador', x: j.x, y: j.y, dir: j.mirando,
       vel: arma.proyectil.vel, radio: arma.proyectil.radio,
@@ -24144,14 +24211,24 @@ function golpear(p, ahora) {
   // Golpe cuerpo a cuerpo: alcance y arco alrededor de hacia dónde mira
   let tocado = false
   for (const en of p.enemigos) {
+    if (en.muerto) continue
+    if (g.tocados.includes(en.id)) continue
     if (dist(j, en) > arma.alcance + en.cfg.radio) continue
     const ang = Math.atan2(en.y - j.y, en.x - j.x)
     let dif = Math.abs(((ang - j.mirando + Math.PI * 3) % (Math.PI * 2)) - Math.PI)
     if (dif > arma.arco) continue
     dañarEnemigo(p, en, Math.round(j.poder * arma.dmg), arma.empuje, ang, ahora)
+    g.tocados.push(en.id)
     tocado = true
   }
-  p.sucesos.push({ t: 'golpe', acierto: tocado, x: j.x, y: j.y, ang: j.mirando, alcance: arma.alcance })
+  // El aviso de golpe sale la primera vez que la ventana se abre, haya
+  // acertado o no: es lo que la pantalla usa para pintar el barrido.
+  if (!g.avisado) {
+    g.avisado = true
+    p.sucesos.push({ t: 'golpe', acierto: tocado, x: j.x, y: j.y, ang: j.mirando, alcance: arma.alcance })
+  } else if (tocado) {
+    p.sucesos.push({ t: 'golpe', acierto: true, x: j.x, y: j.y, ang: j.mirando, alcance: arma.alcance })
+  }
 }
 
 function dañarEnemigo(p, en, dmg, empuje, ang, ahora) {
@@ -24456,6 +24533,9 @@ function tick(p) {
     p.sucesos.push({ t: 'esquiva_inicio' })
   }
   if (e.atacar) golpear(p, ahora)
+  // El gesto se resuelve en cada paso, no al pulsar: el daño vive en la
+  // ventana activa, y quien se meta en ella mientras dura lo encaja.
+  resolverGolpe(p, ahora)
 
   moverCuerpo(j, j.objx || 0, j.objy || 0, dt)
   for (const en of p.enemigos) if (!en.muerto) pasoIA(p, en, ahora, dt)

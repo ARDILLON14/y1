@@ -4,6 +4,43 @@ Cada versión con lo que la motivó. Los detalles completos están en `docs/CAMB
 
 ## v32 (en curso) — El mundo deja de pelear consigo mismo
 
+### En la arena, un golpe ya dura algo
+
+El daño se aplicaba EN EL MISMO INSTANTE en que llegaba la intención de
+atacar. Pulsabas y el enemigo perdía vida, sin más. Eso hacía dos cosas
+malas a la vez.
+
+Una: todas las armas se sentían igual. Un Cetro del Trueno de 620 ms y
+una Daga de 300 impactan los dos al instante; lo único distinto era
+cuánto tardabas en volver a pulsar. El peso del arma no existía.
+
+Dos: no había nada que esquivar. Si el golpe no tiene anticipación, no
+hay ventana en la que apartarse, y el combate se reduce a quién pulsa
+más rápido.
+
+Ahora un golpe tiene tres tiempos —se prepara, está vivo, se recupera—
+y el daño solo existe mientras está vivo:
+
+```
+Daga   (300 ms)   anticipación  90   activo  66   recuperación 144
+Hacha  (500 ms)   anticipación 150   activo 110   recuperación 240
+Cetro  (620 ms)   anticipación 186   activo 136   recuperación 298
+```
+
+**Los números no son de mi cosecha y el daño por segundo no se mueve.**
+Salen de la cadencia, que ya estaba en el catálogo, y los tres tiempos
+SUMAN esa cadencia. Lo que cambia no es cuánto pegas: es cuándo llega.
+
+Dos consecuencias que valen la pena. El arco dispara cuando termina de
+tensarse, no cuando se pulsa. Y un enemigo que se mete en el barrido
+mientras el filo está fuera se lo come, porque el golpe se resuelve en
+cada paso y no solo en el instante de la pulsación, que es justo lo que
+se espera de un arco de ataque.
+
+Hizo falta además llevar cuenta de a quién ha tocado cada golpe: una
+ventana activa de 160 ms abarca dos pasos de 100, y sin eso el mismo
+barrido pegaba dos veces al mismo bicho.
+
 ### Una tercera prueba intermitente, y un barrido para cerrar el asunto
 
 `test-contenido.js` fabricaba una Poción de Velocidad y daba por hecho

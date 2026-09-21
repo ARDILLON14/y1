@@ -14,6 +14,7 @@ Fecha: 2026-09-21 · Base auditada: commit de importación del zip `criptomundo-
 > - §5.8 pruebas intermitentes (`test-misiones-mundo`, `test-turnos`,
 >   `test-contenido`) — **STEP 1 y STEP 2**
 > - §3.1 la recolección física no tenía cliente — **STEP 2**
+> - §5.2 el golpe de la arena no tenía ventanas — **STEP 3** (a medias)
 
 Este documento es el resultado de la FASE 0. **No se ha modificado ni una
 línea de gameplay.** Todo lo que sigue está comprobado contra el código o
@@ -358,6 +359,13 @@ sí se guarda. El más molesto de la lista es el de sesiones: un despliegue
 echa a todos los jugadores.
 
 ### 5.2 Hitboxes: no hay ventanas de ataque
+
+> ✅ **Resuelto a medias en el STEP 3.** El golpe ya tiene anticipación,
+> ventana activa y recuperación, derivadas de la cadencia del arma y
+> sumando exactamente esa cadencia, así que el daño por segundo no se
+> mueve. Lo cubre `test-arena-ventanas.js`. Lo que sigue pendiente es
+> separar el cuerpo de colisión del hurtbox: los dos siguen compartiendo
+> el mismo `radio`.
 
 `golpear()` (`58-arena.js:578`) aplica el daño **en el mismo instante** en
 que llega la intención. No hay startup / active / recovery. La FASE 6 pide
