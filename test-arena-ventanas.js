@@ -134,23 +134,31 @@ async function run() {
      impactos <= (g2.body.estado.enemigos || []).length, impactos + ' impactos')
 
   console.log('\n── Y SE SIGUE PUDIENDO MATAR ──')
-  let bajas = 0
-  for (let i = 0; i < 90; i++) {
+  // Mismo patrón que test-arena.js, que lleva versiones funcionando:
+  // perseguir al más cercano y atacar en cuanto está a tiro.
+  //
+  // El presupuesto importa y el primero que puse se quedó corto. Con
+  // 90 pasos pasaba en aislado y fallaba dentro de la suite: a puños
+  // —el personaje nuevo no lleva nada equipado— una araña aguanta trece
+  // golpes de cadencia 420, o sea más de cinco segundos SOLO de pegar,
+  // sin contar acercarse. La anticipación del golpe nuevo se come
+  // además un swing del presupuesto. Con 180 sobra de largo y sigue
+  // midiendo lo mismo: que atacar mata.
+  let bajas = 0, vueltas = 0
+  while (bajas === 0 && vueltas++ < 180) {
     const e = s.body.estado
-    await sleep(100)
-    const j = (e && e.jugador) || { x: 0, y: 0 }
-    let mejor = null, md = 1e9
-    for (const en of (e && e.enemigos) || []) {
-      const d = Math.hypot(en.x - j.x, en.y - j.y)
-      if (d < md) { md = d; mejor = en }
-    }
-    const ang = mejor ? Math.atan2(mejor.y - j.y, mejor.x - j.x) : 0
-    s = await pulso({ mx: md > 40 ? Math.cos(ang) : 0, my: md > 40 ? Math.sin(ang) : 0, apuntar: ang, atacar: md < 90 })
+    if (!e) break
+    if (e.bajas > 0) { bajas = e.bajas; break }
+    const en = (e.enemigos || [])[0]
+    if (!en) { await sleep(110); s = await pulso({ mx: 0, my: 0 }); continue }
+    const j = e.jugador
+    const dx = en.x - j.x, dy = en.y - j.y
+    const d = Math.hypot(dx, dy) || 1
+    s = await pulso({ mx: dx / d, my: dy / d, apuntar: Math.atan2(dy, dx), atacar: d < 90 })
     if (s.body.fin) break
-    bajas = (s.body.estado && s.body.estado.bajas) || bajas
-    if (bajas > 0) break
+    await sleep(110)
   }
-  ok('atacar sigue matando enemigos', bajas > 0, 'bajas ' + bajas)
+  ok('atacar sigue matando enemigos', bajas > 0, 'bajas ' + bajas + ' tras ' + vueltas + ' vueltas')
 
   await req('POST', '/api/arena/abandon', {})
 
