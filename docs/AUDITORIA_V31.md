@@ -15,6 +15,7 @@ Fecha: 2026-09-21 · Base auditada: commit de importación del zip `criptomundo-
 >   `test-contenido`) — **STEP 1 y STEP 2**
 > - §3.1 la recolección física no tenía cliente — **STEP 2**
 > - §5.2 el golpe de la arena no tenía ventanas — **STEP 3** (a medias)
+> - §2.2 el +HP del equipo no contaba en los turnos — **STEP 4**
 
 Este documento es el resultado de la FASE 0. **No se ha modificado ni una
 línea de gameplay.** Todo lo que sigue está comprobado contra el código o
@@ -161,6 +162,11 @@ comprueba `!/sendToParent\('COMBAT_ACTION'/`, o sea que no se envíe por
 local. La prueba pasa y el agujero sigue abierto.
 
 ### 2.2 El equipo que da +HP no cuenta en el combate por turnos
+
+> ✅ **Resuelto en el STEP 4.** El tope se pregunta con el equipo puesto
+> en el guion, al curarse, al recibir daño, al subir de nivel y al
+> resucitar, y al quitarse una pieza la vida sobrante se recorta. Lo
+> cubre `test-equipo-vida.js`, que sin el arreglo falla seis veces.
 
 `effectiveStats()` suma correctamente `stats.hp` del equipo. Pero todo el
 camino del combate por turnos usa `char.maxHp` (la base, sin equipo) en vez

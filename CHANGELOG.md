@@ -4,6 +4,34 @@ Cada versión con lo que la motivó. Los detalles completos están en `docs/CAMB
 
 ## v32 (en curso) — El mundo deja de pelear consigo mismo
 
+### El equipo que da vida ya cuenta en los turnos
+
+`char.maxHp` es la vida BASE: la que dan la clase y el nivel. El equipo
+suma aparte, en `effectiveStats()`. Pero el combate por turnos usaba la
+base como si fuera el tope real, y la arena usaba el tope real. El mismo
+personaje tenía dos vidas máximas distintas según dónde peleara.
+
+Cinco piezas dan vida —Peto de Cuero +40, Coraza de Hierro +90, Grebas
++40, Peto de Cristal +140, Amuleto de Trébol +30— y la Torta de Maíz
+existe SOLO para eso: su único efecto es +60 de vida máxima durante diez
+minutos. Con peto de cristal y grebas llevabas +180 que en los turnos no
+existían.
+
+Y como `/api/player` sí devolvía el tope real, la pantalla enseñaba
+1.290 mientras el servidor topaba en 1.150. O sea que la barra se
+llenaba antes de tiempo, la poción se desperdiciaba a media curación y
+morir te devolvía a la mitad de la vida base en vez de la mitad de la
+tuya. Craft → equipar → estadísticas funcionaba, y se rompía justo en el
+eslabón que se ve jugando.
+
+Ahora el tope se pregunta con el equipo puesto en el guion del turno, al
+curarse, al recibir daño, al subir de nivel y al resucitar. Y al quitarse
+una coraza la vida que sobra se recorta: sin eso quedaba un personaje con
+1.150 puntos de un tope de 970.
+
+La prueba nueva se comprobó contra el código viejo antes de darla por
+buena: sin el arreglo falla seis veces, con él pasa las veinte.
+
 ### En la arena, un golpe ya dura algo
 
 El daño se aplicaba EN EL MISMO INSTANTE en que llegaba la intención de

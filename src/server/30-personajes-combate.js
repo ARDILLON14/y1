@@ -328,6 +328,40 @@ function effectiveStats(char) {
   return s
 }
 
+// ── La vida máxima de VERDAD ───────────────────────────────────────
+//
+// `char.maxHp` es la vida BASE: la que dan la clase y el nivel, sin
+// equipo y sin efectos. Es el número que hay que guardar, porque el
+// equipo se quita y se pone.
+//
+// El problema es que el combate por turnos lo usaba como si fuera el
+// tope real. Y no lo es: effectiveStats() suma el `hp` del equipo, y
+// hay cinco piezas que lo dan —Peto de Cuero +40, Coraza de Hierro +90,
+// Grebas +40, Peto de Cristal +140, Amuleto de Trébol +30— más la
+// Torta de Maíz, cuyo ÚNICO efecto es +60 de vida máxima durante diez
+// minutos.
+//
+// Resultado: con peto de cristal y grebas llevabas +180 de vida que la
+// arena sí contaba y los turnos no. La barra se llenaba antes de
+// tiempo, curarse desperdiciaba media poción y morir te devolvía a la
+// mitad de la vida BASE. Craft → equipar → estadísticas funcionaba y se
+// rompía en el último eslabón, que es el que se ve jugando.
+//
+// Estas dos funciones contestan a "¿cuánto aguanta AHORA MISMO?" y
+// recalculan cada vez a propósito: beberse una Torta de Maíz en mitad
+// del combate tiene que subir el tope en ese mismo turno.
+function maxHpDe(char) { return effectiveStats(char).maxHp }
+function maxMpDe(char) { return effectiveStats(char).maxMp }
+
+// Y esto para cuando el tope BAJA: al quitarse la coraza, la vida que
+// sobra se recorta. Sin esto quedaba un personaje con 1.150 de 970.
+function ajustarATope(char) {
+  const st = effectiveStats(char)
+  if (char.hp > st.maxHp) char.hp = st.maxHp
+  if (char.mp > st.maxMp) char.mp = st.maxMp
+  return st
+}
+
 // ── Cuánto pega y aguanta un jugador POR SER DE SU NIVEL ───────────
 //
 // Sin contar arma ni armadura: solo la clase y el nivel. Lo usan los
@@ -398,11 +432,14 @@ function checkLevelUp(char) {
     char.maxHp += g.hp; char.maxMp += g.mp
     // Subir de nivel cura, pero no del todo: si no, el daño nunca se
     // acumula entre combates y las pociones no sirven para nada.
-    char.hp = Math.min(char.maxHp, char.hp + Math.floor(char.maxHp * 0.5))
-    char.mp = Math.min(char.maxMp, char.mp + Math.floor(char.maxMp * 0.5))
+    // La mitad del tope REAL, con el equipo puesto: si no, subir de
+    // nivel llevando una coraza buena curaba proporcionalmente menos.
+    const tope = effectiveStats(char)
+    char.hp = Math.min(tope.maxHp, char.hp + Math.floor(tope.maxHp * 0.5))
+    char.mp = Math.min(tope.maxMp, char.mp + Math.floor(tope.maxMp * 0.5))
     char.strength += g.strength; char.intelligence += g.intelligence
     char.agility += g.agility; char.defense += g.defense
-    events.push({ level: char.level, maxHp: char.maxHp, maxMp: char.maxMp })
+    events.push({ level: char.level, maxHp: tope.maxHp, maxMp: tope.maxMp })
   }
   return events
 }
@@ -544,7 +581,7 @@ function combatAction(char, battle, action, skillId, itemId) {
     g.anota('BATTLE_START', {
       enemigo: { id: m.id, nombre: m.name, icono: m.icon, nivel: m.level, esJefe: !!m.isBoss },
       hpEnemigo: battle.enemyHp, hpEnemigoMax: battle.enemyMaxHp,
-      hpJugador: char.hp, hpJugadorMax: char.maxHp,
+      hpJugador: char.hp, hpJugadorMax: st.maxHp,
     })
   }
   g.anota('PLAYER_TURN', { turno: battle.turn, combo: battle.combo })
@@ -616,7 +653,7 @@ function combatAction(char, battle, action, skillId, itemId) {
     g.anota('PLAYER_ANIMATION', { anim: 'habilidad', habilidad: sk.name, elemento: element, crit, ms: 520 })
   } else if (action === 'block') {
     battle.blocking = true
-    char.mp = Math.min(char.maxMp, char.mp + Math.floor(char.maxMp * 0.1))
+    char.mp = Math.min(st.maxMp, char.mp + Math.floor(st.maxMp * 0.1))
     battle.combo = 0
     g.anota('PLAYER_ANIMATION', { anim: 'defender' })
     log.push('Te preparas para bloquear')
@@ -639,7 +676,7 @@ function combatAction(char, battle, action, skillId, itemId) {
         .sort((a, b) => usableEnCombate(a.itemId).heal - usableEnCombate(b.itemId).heal)
       // La que menos cure de las que sirvan: no se gasta el elixir en un
       // rasguño. Si ninguna llega, se usa la más fuerte que haya.
-      const falta = char.maxHp - char.hp
+      const falta = st.maxHp - char.hp
       usar = (candidatos.find(i => usableEnCombate(i.itemId).heal >= falta) ||
               candidatos[candidatos.length - 1] || {}).itemId
     }
@@ -649,7 +686,7 @@ function combatAction(char, battle, action, skillId, itemId) {
     if (!tengo) return { error: 'No tienes ese objeto', code: 400 }
     removeItem(char, usar, 1)
     playerHeal = plantilla.heal || 0
-    if (plantilla.mana) char.mp = Math.min(char.maxMp, char.mp + plantilla.mana)
+    if (plantilla.mana) char.mp = Math.min(maxMpDe(char), char.mp + plantilla.mana)
     if (plantilla.buff && typeof aplicarEfecto === 'function') aplicarEfecto(char, plantilla.buff)
     g.anota('PLAYER_ANIMATION', {
       anim: 'objeto', itemId: usar, nombre: plantilla.name, icono: plantilla.icon,
@@ -720,7 +757,7 @@ function combatAction(char, battle, action, skillId, itemId) {
         // el combo y parte del maná. Bloquear o interrumpir compensa.
         log.push(`¡${battle.telegraph.name} te golpea de lleno!`)
         battle.combo = 0
-        char.mp = Math.max(0, char.mp - Math.floor(char.maxMp * 0.2))
+        char.mp = Math.max(0, char.mp - Math.floor(st.maxMp * 0.2))
       }
       enemyDmg = dodge ? 0 : dmg
       if (dodge) log.push('¡Esquivaste el ataque pesado!')
@@ -743,12 +780,15 @@ function combatAction(char, battle, action, skillId, itemId) {
       dmg: enemyDmg, esquivado: dodge, bloqueado: !!battle.blocking && enemyDmg > 0,
       pesado: golpePesado, fase: battle.phase,
       avisa: incoming ? { nombre: incoming.name, mult: incoming.mult } : null,
-      hpJugador: Math.max(0, char.hp + playerHeal - enemyDmg), hpJugadorMax: char.maxHp,
+      hpJugador: Math.max(0, char.hp + playerHeal - enemyDmg), hpJugadorMax: maxHpDe(char),
     })
     battle.blocking = false
   }
 
-  char.hp = Math.max(0, Math.min(char.maxHp, char.hp + playerHeal - enemyDmg))
+  // El tope se vuelve a preguntar AQUÍ en vez de reutilizar el `st` del
+  // principio del turno: si el jugador acaba de beberse una Torta de
+  // Maíz, su vida máxima ya ha subido y la curación tiene que contarlo.
+  char.hp = Math.max(0, Math.min(maxHpDe(char), char.hp + playerHeal - enemyDmg))
   battle.buffs = battle.buffs.map(b => ({ ...b, turns: b.turns - 1 })).filter(b => b.turns > 0)
 
   // Los campos planos de siempre se quedan: la pantalla actual los usa
@@ -757,7 +797,7 @@ function combatAction(char, battle, action, skillId, itemId) {
   const out = { playerDmg, enemyDmg, playerHeal, crit, miss, element, log, battle, combo: battle.combo, phase: battle.phase, telegraph: incoming || battle.telegraph }
 
   g.anota('CHECK_VICTORY', {
-    hpJugador: char.hp, hpJugadorMax: char.maxHp,
+    hpJugador: char.hp, hpJugadorMax: maxHpDe(char),
     hpEnemigo: battle.enemyHp, hpEnemigoMax: battle.enemyMaxHp,
     vivos: battle.enemyHp > 0 && char.hp > 0,
   })
@@ -807,7 +847,7 @@ function combatAction(char, battle, action, skillId, itemId) {
     trackCurrency(char.name, 'gold', -lost, 'death_penalty')
     track('player_death', char.name)
     char.muertes = (char.muertes || 0) + 1
-    char.hp = Math.floor(char.maxHp * 0.5)
+    char.hp = Math.floor(maxHpDe(char) * 0.5)
     out.playerDied = true
     out.goldLost = lost
     audit('combat_loss', char.name, { monster: m.id, goldLost: lost })

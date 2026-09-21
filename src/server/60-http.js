@@ -269,10 +269,14 @@ async function handleAPI(req, res, pathname, query) {
   }
 
   if (pathname === '/api/player/respawn' && req.method === 'POST') {
-    char.hp = Math.floor(char.maxHp * 0.5)
-    char.mp = Math.floor(char.maxMp * 0.5)
+    // La mitad del tope REAL, con el equipo puesto. Antes era la mitad
+    // de la vida BASE, así que con una coraza buena resucitabas con
+    // bastante menos de la mitad de lo que te cabe.
+    const st = effectiveStats(char)
+    char.hp = Math.floor(st.maxHp * 0.5)
+    char.mp = Math.floor(st.maxMp * 0.5)
     persist()
-    return json(res, { success: true, hp: char.hp, mp: char.mp })
+    return json(res, { success: true, hp: char.hp, mp: char.mp, maxHp: st.maxHp, maxMp: st.maxMp })
   }
 
   if (pathname === '/api/player/equip' && req.method === 'POST') {
@@ -281,16 +285,21 @@ async function handleAPI(req, res, pathname, query) {
     if (unequip) {
       if (!SLOTS.includes(slot)) return fail(res, 'Slot inválido')
       delete char.equipment[slot]
+      // Quitarse una coraza baja la vida máxima. Sin recortar, quedaba
+      // un personaje con 1.150 puntos de un tope de 970.
+      const st = ajustarATope(char)
       persist()
-      return json(res, { success: true, equipment: char.equipment, stats: effectiveStats(char) })
+      return json(res, { success: true, equipment: char.equipment, stats: st, hp: char.hp, mp: char.mp })
     }
     const item = char.inventory.find(i => i.uid === uid)
     if (!item) return fail(res, 'Objeto no encontrado en tu inventario', 404)
     const t = template(item.itemId)
     if (!t?.slot) return fail(res, 'Ese objeto no es equipable')
     char.equipment[t.slot] = item.uid
+    // Cambiar una pieza por otra peor también puede bajar el tope.
+    const st = ajustarATope(char)
     persist()
-    return json(res, { success: true, equipment: char.equipment, stats: effectiveStats(char) })
+    return json(res, { success: true, equipment: char.equipment, stats: st, hp: char.hp, mp: char.mp })
   }
 
   // Usar un consumible fuera del combate. Antes solo se podía beber
