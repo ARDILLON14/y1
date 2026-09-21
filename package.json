@@ -1,0 +1,27 @@
+{
+  "name": "criptomundo",
+  "version": "31.0.0",
+  "description": "MMORPG de navegador con autoridad del servidor. Un solo ejecutable, cero dependencias npm.",
+  "private": true,
+  "main": "criptomundo.js",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node criptomundo.js",
+    "dev": "node build.js && node criptomundo.js",
+    "build": "node build.js",
+    "watch": "node build.js --watch",
+    "doctor": "node doctor.js",
+    "simular": "node simular-jugadores.js",
+    "test": "node test-build.js && PORT=3991 node test-seguridad.js --spawn && PORT=3992 node test-analitica.js --spawn && PORT=3993 node test-taller-casa-gremios.js --spawn && PORT=3994 node test-misiones-mundo.js --spawn && PORT=3995 node test-personajes.js --spawn && PORT=3996 node test-tiempo-real.js --spawn && PORT=3997 node test-primeros-pasos.js --spawn && PORT=3998 node test-invitaciones.js --spawn && PORT=3999 node test-movil.js --spawn && PORT=3986 node test-red-cliente.js --spawn && PORT=3985 node test-avisos.js --spawn && PORT=3405 node test-arreglos-v20.js --spawn && PORT=3420 node test-arena.js --spawn && PORT=3470 node test-personaje-propio.js --spawn && PORT=3560 node test-contenido.js --spawn && PORT=3810 node test-revision.js --spawn && PORT=3820 node test-recursos.js --spawn && PORT=3830 node test-espadas.js --spawn && PORT=3840 node test-armas-visual.js --spawn && PORT=3850 node test-arena-navegador.js --spawn && PORT=3862 node test-arena-http.js --spawn && PORT=3872 node test-produccion.js --spawn && PORT=3880 node test-movimiento.js --spawn && PORT=3910 node test-ia-enemigos.js --spawn && PORT=3460 node test-mundo-zona.js --spawn && PORT=3920 node test-proyectiles.js --spawn && PORT=3930 node test-animaciones.js --spawn && PORT=3940 node test-socket-fugas.js --spawn && PORT=3950 node test-turnos.js --spawn && PORT=3960 node test-turnos-pantalla.js --spawn && PORT=3970 node test-habilidades.js --spawn",
+    "invitar": "node invitaciones.js",
+    "css-movil": "node aplicar-css-movil.js && node build.js",
+    "carga": "node carga.js",
+    "red-cliente": "node aplicar-red-cliente.js && node build.js",
+    "estabilidad": "node test-estabilidad.js --spawn",
+    "concurrencia": "node test-concurrencia.js --spawn",
+    "avisos": "node aplicar-avisos.js && node build.js",
+    "beta": "node preparar-beta.js"
+  }
+}

@@ -1,0 +1,9 @@
+src
+migrations
+test-*.js
+build.js
+doctor.js
+simular-jugadores.js
+*.md
+assets/skins/originales
+criptomundo-data.json

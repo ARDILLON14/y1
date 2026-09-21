@@ -1,0 +1,495 @@
+# Historial de cambios
+
+Cada versión con lo que la motivó. Los detalles completos están en `docs/CAMBIOS_VN.md`.
+
+## v31 — Revisión completa: materiales, código muerto y fluidez
+
+Cuatro encargos: comprobar que todos los materiales de las armas se pueden conseguir, que todo lo que llevamos funciona, que no queda código que no hace nada, y que el juego vaya más fluido. Para los tres primeros hice una herramienta; el cuarto resultó ser otra cosa distinta de la que parecía.
+
+### El mundo iba a 6,8 cuadros por segundo — y aquí no cargaba siquiera
+
+Lo gordo. Medí la arena en un Chromium de verdad y va a 60 cuadros por segundo incluso con la CPU estrangulada ×6 (un móvil flojo): pintar la escena cuesta **0,2 ms**. Mi sospecha —que la rejilla del suelo se repintaba entera cada cuadro— era falsa. El render de la arena está bien.
+
+Al medir el mundo saltó `Phaser is not defined`. La pantalla del mundo cargaba Phaser desde **cdnjs.cloudflare.com**, y sin salida a internet la pantalla entera se queda en negro. No a tirones: muerta. Y este proyecto es "un ejecutable, cero dependencias" que se juega en redes que ya nos han dado guerra (el WebSocket de la v30). Ahora Phaser se sirve desde el propio servidor (`/assets/vendor/phaser.min.js`), con el CDN como respaldo.
+
+Con Phaser cargando de verdad, el mundo iba a **6,8 cuadros por segundo**. La causa:
+
+```
+   Phaser.WEBGL forzado ....   6,8 cuadros/s   (147 ms por cuadro)
+   Phaser.CANVAS ..........   60,0 cuadros/s   ( 16,7 ms por cuadro)
+   Phaser.AUTO ............   60,0 cuadros/s
+```
+
+Estaba forzado a `WEBGL`, que quiere decir "WebGL o nada". En un aparato sin GPU aprovechable el navegador no se niega: lo emula por software, y va nueve veces más lento. `AUTO` usa WebGL donde hay GPU de verdad y Canvas donde no.
+
+También: el `resize` reconstruía la superficie de dibujo **una vez por evento**, y en un móvil ese evento se dispara en ráfagas cada vez que aparece o desaparece la barra de direcciones. Ahora espera 120 ms a que pare.
+
+Y en la arena, la intención sale **en cuanto cambia** en vez de esperar al latido de 100 ms. Empezar a andar, parar, atacar y esquivar se adelantan hasta una décima. No sube el gasto de red andando en línea recta, que es lo que había que cuidar.
+
+### Los materiales: `revisar-materiales.js`
+
+Cierra el grafo entero. Parte de lo que se consigue sin fabricar nada —lo de fábrica, la recolección, el botín, las misiones, las mazmorras, el mercado inicial— y va añadiendo lo que ya se puede fabricar, vuelta tras vuelta, hasta que deja de crecer. Las herramientas son parte del grafo: un nodo pide un pico de nivel 3, ese pico pide una cabeza de hierro, el hierro pide otro pico…
+
+**Las diez armas fabricables se pueden conseguir**, eslabón a eslabón. Lo que no:
+
+- **Poción de Curación V** y **Elixir Mítico**: los dos peldaños de arriba de la escalera de curación no salían de ningún sitio. Ni botín, ni receta, ni misión. Ahora la V se fabrica (nivel 14) y el Elixir sale del botín de las Ruinas.
+- **Esqueje de Cristal**: el huerto sabía hacerlo crecer y convertirlo en cristal, pero el esqueje no existía en ninguna parte. Esa rama del huerto estaba escrita y muerta. Ahora se saca de un cristal.
+
+**Y casi reporto seis fallos que no lo eran.** La primera versión de la herramienta daba por inalcanzables la Poción de Maná, la Capucha del Espía, el Arco Élfico y más. Se me habían olvidado tres fuentes: las recompensas de misión, el botín de mazmorra y el mercado inicial. Una fuente olvidada convierte este análisis en una fábrica de falsos positivos.
+
+### El código muerto: `revisar-codigo-muerto.js`
+
+Cuatro cosas, todas comprobadas una por una antes de tocarlas:
+
+- `startCombatWith()` en el mundo — nadie la llamaba.
+- `animEnCurso()` en las animaciones — su propio comentario decía "para las pruebas" y ninguna prueba la usaba.
+- `RARITY_KEY` en el perfil — declarada y nunca leída.
+- `zoneIcons` en el minimapa — la tabla de iconos existía; el minimapa nunca llegó a pintarlos.
+
+La primera versión de esta herramienta marcaba 40 "código después de un return" que eran guardas normales, y daba por muerta la función `$` en cinco páginas (`$` no es carácter de palabra, así que mi expresión regular no casaba nunca). Un informe con cuarenta falsos positivos es un informe que nadie vuelve a abrir.
+
+### Tres fallos más, encontrados de rebote
+
+**BUG DETECTADO — el botón de Aviso no funcionaba en el mundo.**
+Archivo: `src/pages/criptomundo-mundo2d-2.js`. La pantalla tenía el botón "💬 Aviso" y sus estilos, pero **no el script que lo define**. Todas las demás pantallas tienen los dos. Pulsarlo en el mundo —la pantalla donde más tiempo se pasa— lanzaba `abrirAviso is not defined` y no hacía nada.
+
+**BUG DETECTADO — error de JavaScript en cada carga del lanzador.**
+El iframe nace con `src=""` y el navegador dispara su `onload` al parsear la etiqueta, antes de que exista `onFrameLoad`. No rompía nada visible, pero un error fijo en consola tapa los que sí importan. Lo encontré midiendo el render, no buscándolo.
+
+**BUG DETECTADO — una prueba llevaba tiempo pasando en falso.**
+`test-concurrencia.js` comprobaba que una mazmorra no pagara dos veces —el propio archivo lo llama "el que de verdad importa… sería una fábrica de dinero"— contra `/api/dungeon`, una API que no existe. Como estaba dentro de un `if (nivel >= 5)` que nunca se cumplía, el error no salía. Y las otras dos comprobaciones de mazmorra usaban un personaje de nivel 1, que no puede entrar a la Cripta: pasaban contando cero. Ese invariante **no se había comprobado nunca**.
+
+**Y el paso 10 hizo la progresión ~2× más lenta**, que no lo había medido: una araña pasó de 3,4 turnos a 6,3, o sea de 54 XP por turno a 29. Es una decisión de diseño pendiente, no un fallo.
+
+### Herramientas nuevas
+
+`revisar-materiales.js` · `revisar-codigo-muerto.js` · `medir-render.js` (Chromium real, con estrangulamiento de CPU para simular un móvil). `revisar-cliente.js` ahora levanta el servidor solo con `--spawn`: antes, si se olvidaba arrancarlo, decía "0 páginas revisadas · 0 scripts rotos", que se lee como aprobado y es lo contrario.
+
+**Pruebas: 638 comprobaciones en verde**, 16 páginas compilando en navegador, materiales cerrados y cero código muerto.
+
+## v30 — PASO 10: balance, medido en vez de adivinado
+
+Antes de tocar un número construí `banco-balance.js`. Carga **los módulos reales del servidor** en una máquina virtual y les cambia una sola cosa: el reloj. `now()` deja de ser la hora del sistema y pasa a ser un contador que muevo yo, así que un combate de 40 segundos se juega en 3 milisegundos y **600 combates caben en menos de un segundo**. Es el mismo `tick()`, la misma IA, el mismo `herir()`. El robot que juega solo ve lo que ve el navegador (`resumen()`) y solo manda lo que puede mandar el navegador (mx, my, apuntar, atacar, esquivar): no puede hacer trampa. Y hay un segundo robot **deliberatemente malo** —reacciona 4 veces más lento, no esquiva y se queda pensando el 15% del tiempo— para poner cota por abajo. Entre los dos queda encerrado cualquier jugador humano.
+
+Lo primero que salió fue que **el fallo que yo mismo documenté en el paso 9 estaba mal diagnosticado**. Escribí que "con la Espada de Diamante el troll encadena aturdimientos y no llega a cargar nunca". Falso: sí cargaba, el 100% de las veces que lo intentaba. El problema era que **solo lo intentaba una vez**.
+
+### Las arenas eran una animación, no un combate
+
+```
+   arena                 ANTES                      AHORA
+                  gana   vida-fin  dura      gana   vida-fin  dura
+   Bosque nv1       —        —       —       100%     36%     35s
+   Bosque nv3     100%     90%     14s       100%     47%     29s
+   Minas nv11     100%     95%     13s       100%     88%     26s
+   Ruinas nv13    100%    100%     11s       100%     69%     29s
+   Ruinas nv18    100%    100%     10s       100%     86%     20s
+```
+
+El Patio de las Ruinas —dos gólems, un dragón y un demonio— se limpiaba en 11 segundos **sin perder un punto de vida**. Y no era culpa del robot: el robot malo también ganaba el 100%.
+
+### BUG DETECTADO — el juego se hacía MÁS FÁCIL según avanzabas
+
+```
+   nv  arma                pega  vida  │ golpes que le das  golpes que aguantas
+    3  Daga de Hierro        50  1300  │        4                   57
+   18  Espada de Diamante   286  2425  │        1                   68
+```
+
+El jugador multiplica por 5,7 lo que pega y solo por 1,9 lo que aguanta. Los enemigos subían un 4% por nivel en la arena y un 5% en los turnos. Y no había número que lo arreglara: en el barrido, cualquier daño que inquietara al veterano mataba al principiante el 100% de las veces.
+
+Ahora el enemigo se escala con lo que el jugador tiene **por nivel** —no con el número del nivel— y **sin contar su equipo**: si siguiera también al arma, una espada mejor no mataría antes y todo el progreso del equipo sería decorativo. Subir de nivel te mantiene en tu sitio; mejorar el equipo es lo que te hace fuerte. La referencia es el `minLevel` de la arena, que es lo que ella misma declara.
+
+### BUG DETECTADO — un arma rápida dejaba al enemigo sin jugar
+
+El peor de todos, y el que estaba debajo de casi todo lo demás. La traba (`HURT`) dura 160 ms en una araña. Con un arma que pega cada 300 ms, el siguiente golpe llegaba antes de que se recuperase, y el siguiente: se pasaba la pelea trabada **sin llegar a morder nunca**. Mismo jugador, misma arena, cambiando SOLO la cadencia del arma:
+
+```
+   cada 300 ms  →   20 de daño recibido
+   cada 460 ms  →  543 de daño recibido
+```
+
+Veintisiete veces más por pegar medio segundo más lento. De ahí venía que la Daga de fábrica ganara a seis armas de tiers superiores, y que craftear tu primera espada te dejara al 9% de vida cuando con la daga acababas al 43%. Ahora hay un descanso entre trabas (`DESCANSO_TRABA`): tras recuperarse, el enemigo tiene una ventana en la que no se le puede volver a trabar. El aturdimiento por golpe gordo **no** pasa por ahí, porque ese es la jugada del jugador.
+
+### BUG DETECTADO — la progresión de armas estaba al revés
+
+Lo que rinde un arma es `dmg ÷ cadencia`, no el `dmg` suelto. Medido: **los puños pegaban más por segundo que la Espada de Piedra y que el Garrote**. El Arco Corto quedaba por debajo de ir a puñetazos.
+
+El juego ya dice lo que vale cada arma —su precio—, así que ajusté el rendimiento contra el precio: `2,15 + 0,06 × √precio` (×0,75 si dispara, que ese descuento sí es un juicio mío: quien dispara termina con el 100% de la vida). La curva pasa **clavada** por los puños, la Lanza de Hierro, la Vara de Cristal, la Espada de Hierro y la de Diamante: no me la inventé, estaba ya dentro del juego. Esas cinco no se tocaron; las ocho que se salían eran las rotas.
+
+Lo mismo con el alcance. Un arma lenta te tiene más rato plantado delante del bicho, y lo que compensa eso es poder pegarle desde lejos. Mirando `alcance ÷ cadencia`, las armas se partían en dos grupos limpios: seis entre 0,154 y 0,218 y cuatro en 0,110-0,115. Los cuatro de abajo eran los puños —que deben ser malos— y otra vez el Garrote, la Espada de Piedra y el Hacha.
+
+### BUG DETECTADO — dos conductas de enemigo no podían darse nunca
+
+**El embestidor.** Exigía que estuvieras a más de 2,2 cuerpos para cargar, y pegado a él eso no pasa jamás. Medido: un troll a solas embestía **una vez por pelea** —la primera, antes de que le alcanzaras— y ni una más. Ahora te quita de en medio de un empujón y encadena el aviso en el mismo movimiento. Probé primero a que saltara él hacia atrás y los números dicen por qué no funcionaba: va a 78 px/s y el jugador a 210.
+
+**El tirador.** El dragón se aparta a 96 px/s. Retroceder andando de espaldas delante de alguien que va al doble de velocidad es quedarse quieto, así que a los dos jefes de las Ruinas les bastaba con que te acercaras para dejar de ser peligrosos. Ahora la retirada es un salto de verdad, y dispara mientras retrocede.
+
+**Y el aviso ya no se corta con un rasguño.** `TELEGRAPH` y `CHARGE` pasan por encima de `HURT` en la tabla de pesos: un movimiento comprometido solo lo cancela un golpe que aturda. Antes, cuanto mejor era tu arma menos veías la conducta del bicho (Filo Escarchado: llegaba a embestir el 17% de las veces). Ahora interrumpir una embestida es una **decisión**: guardarse el golpe fuerte para el aviso pasa a ser jugar bien.
+
+### BUG DETECTADO — a dos jefes les faltaba el multiplicador de jefe
+
+La vida de los bichos sigue una curva —`130 × nivel^0,71`, ×1,7 si es jefe— que no impuse yo: la araña, el troll y Grommash caen encima con un error del 3%. Medidos contra ella, el **Dragón Menor tenía el 46%** de la vida que le tocaba y el **Demonio Abismal el 59%**. El Dragón, jefe de nivel 15, tenía exactamente la misma vida que el Gólem de nivel 8.
+
+Lo que se veía: Grommash duraba 20 turnos y el Demonio Abismal, el jefe final, duraba 6. Los jefes anuncian un golpe fuerte cada 3 turnos y cambian de fase a media vida, así que **ninguna de las dos mecánicas llegaba a verse** contra los jefes de arriba. Contenido escrito, probado y nunca mostrado — el mismo patrón que el Golpe de Escudo del paso 9.
+
+```
+   jefe                 ANTES              AHORA
+                 turnos  fase 2      turnos  fase 2
+   Grommash          5    100%          18    100%
+   Dragón Menor      3      0%          12    100%
+   Demonio Abismal   3      0%          12    100%
+```
+
+### Lo que queda fijado
+
+`test-balance.js` (25 comprobaciones) no fija números —ajustar balance es normal— sino las **propiedades** que no pueden volver a romperse, cada una porque ya se rompió: ningún arma rinde menos que los puños; la primera arma que crafteas no te empeora; un arma rápida no apaga al enemigo; el embestidor llega a embestir; las arenas cuestan vida y se pueden ganar; un jefe dura lo que dura un jefe; el juego no se ablanda al subir de nivel.
+
+Comprobé que la prueba sirve **reintroduciendo los fallos a mano**: con el encadenado de trabas vuelve a fallar la comprobación 3, y con las escalas viejas fallan siete.
+
+## v30 — El socket dejaba conexiones colgadas (por eso "a las 2 batallas dejaba de cargar")
+
+Reportado desde la partida. El servidor aguanta cuatro batallas seguidas sin despeinarse, así que el problema no estaba ahí: estaba en el navegador.
+
+Cuando algo en medio —un cortafuegos, un antivirus, una VPN— se **traga** el paquete del WebSocket en vez de rechazarlo, el socket se queda colgado en "conectando" para siempre: no abre, no falla y no se cierra. Y cada batalla creaba uno nuevo (`empezar()` → `conectar()` → `ws = new WebSocket(...)`) sin cerrar el anterior. El objeto viejo se perdía pero **la conexión seguía abierta**, ocupando una de las ~6 ranuras que el navegador da por servidor. Dos o tres batallas después no quedaba ninguna libre y todas las peticiones se quedaban en cola: la pantalla dejaba de cargar. No un error, no un mensaje: una espera infinita.
+
+Tres reglas nuevas: antes de abrir un socket se cierra el que hubiera; el que no abre en cuatro segundos se cierra solo —esta era la pieza que faltaba, porque *colgado* significa justamente que no avisa—; y cuando ya se sabe que en esta sesión no va a abrir, se deja de intentarlo y se juega por HTTP el resto de la partida.
+
+`test-socket-fugas.js` ejecuta el JavaScript real de la página con un WebSocket que se cuelga a propósito y cuenta las conexiones que quedan. Con el código anterior: 4 creadas, 4 colgadas. Ahora: 1 como mucho, y tras la primera batalla no se abre ni una más.
+
+## v30 — La espada no se veía en el combate por turnos
+
+Reportado desde la partida: "el personaje cuando atacas se mueve pero no saca una espada". Y en esta ocasión dejé de adivinar: rendericé la página en un Chromium de verdad y miré.
+
+`document.getElementById('arma-jugador')` devolvía **null**. El hueco del arma estaba en el HTML servido —lo comprobé— pero desaparecía del DOM al cargar. El culpable: el aplicador de skins hace `el.innerHTML = ...` sobre `sprite-jugador` para poner el aspecto del personaje, y yo había metido el arma **dentro** de ese elemento. Se la llevaba por delante en cuanto cargaba la skin. Ahora el arma cuelga de `.fighter`, que nadie reescribe.
+
+**Y mi prueba lo daba por bueno.** El DOM de mentira del arnés creaba cualquier elemento que se le pidiera, así que "la pantalla dibuja el arma" pasaba sobre un fantasma. Un DOM falso más permisivo que el real no prueba que el código funcione: prueba que no revienta. Ahora el arnés lee los ids que existen de verdad en el HTML y devuelve `null` para el resto.
+
+De paso, la prueba de tiempos era inestable: daba por hecho que el golpe acertaba, y hay un 5% de fallo. Ahora mira lo que dijo el servidor.
+
+## v30 — PASO 9: habilidades, objetos y estados
+
+**Dos de cada tres habilidades eran inalcanzables.** Cada clase sabe tres y la pantalla mandaba siempre la primera: `payload.skillId = char.skills[0]`. Un Guerrero no llegaba a usar Golpe de Escudo en toda su vida — la única que aturde e interrumpe el ataque anunciado del enemigo, y la que el propio aviso en pantalla le decía que usara. Estaba en el catálogo, con su coste, su enfriamiento y su efecto, y no había forma de lanzarla.
+
+Ahora hay un selector: las tres, con lo que cuestan, lo que hacen y por qué no se pueden lanzar cuando no se pueden —enfriando, con los segundos que quedan, o sin maná—. Lo dice el servidor en `/api/combat/habilidades`; la pantalla apaga el botón y el servidor lo vuelve a validar igual.
+
+**BUG DE SEGURIDAD, encontrado por la prueba nueva.** El servidor comprobaba que la habilidad existiera en el catálogo, no que el personaje la supiera: `SKILLS[skillId] ? skillId : ...`. Un Guerrero podía lanzar Bola de Fuego mandando el id a mano, y con ella el daño de un mago escalado por su propia inteligencia. Llevaba ahí desde siempre; al añadir el selector solo lo dejé a la vista. Ahora solo valen las que sabe.
+
+**Los estados se ven.** Los refuerzos y venenos existían desde el principio y no aparecían en ninguna parte: bebías una Poción de Fuerza y no tenías forma de saber si seguía haciendo efecto. Ahora hay una fila de marcas a cada lado con el icono y lo que queda —turnos para los de combate, segundos para los de poción—, incluido el aviso del golpe fuerte del enemigo.
+
+**BUG ARREGLADO — medio panel salía como "objeto desconocido".** `dibujoItem` leía `item.icon` y el catálogo de combate manda `icono`. Conviven las dos formas porque una sale de la plantilla (en inglés) y la otra del catálogo nuevo, así que ahora se leen las dos. Lo vi en el navegador: cuatro pociones y las cuatro con la caja 📦.
+
+## v30 — PASO 8: el combate por turnos se reproduce en vez de volcarse
+
+El paso 7 hizo que el servidor mandara el turno como un guion. Este hace que la pantalla lo **reproduzca**.
+
+Antes, la barra de vida del enemigo bajaba en el mismo instante en que llegaba la respuesta —antes incluso de que empezara la animación del golpe—. Se veía el resultado y luego el gesto, al revés, y el turno entero ocurría en un fotograma. Ahora las escenas se recorren en orden con su duración: el jugador se mueve, el arma sale disparada y vuelve, y **entonces** salta el número y baja la barra. Un golpe se siente como un golpe porque el resultado llega después del gesto, no antes.
+
+**El arma equipada se ve en el combate por turnos**, colgada del sprite y con el mismo gesto de tres fases que en la arena. Sale del mismo catálogo del servidor: no hay una segunda lista de armas, así que cambiar el dibujo de una espada la cambia en los dos combates.
+
+**Y el botón de curarse pasó a ser un botón de objetos.** El paso 7 hizo que el servidor supiera usar cualquier consumible; aquí la pantalla lo ofrece: un selector con lo que llevas, lo que hace cada cosa y cuánto te queda, servido por `/api/combat/objetos`. La pantalla no adivina qué es una poción por el nombre.
+
+**Cómo se comprueba.** No leyendo el código: `test-turnos-pantalla.js` ejecuta el JavaScript real de la página con un DOM de mentira que **apunta el milisegundo** de cada cosa, pulsa Atacar y mide. Exige que el gesto del jugador vaya antes de que el enemigo encaje, que la barra baje después del impacto y con más de 120 ms de margen desde que llegó la respuesta, y que el turno dure un tiempo real. Verificado al revés forzando el camino antiguo: 304 ms y sin gesto de arma, frente a ~1400 ms reproduciendo el guion.
+
+**La página se partió en dos**, como ya estaba el mapa: la pantalla y sus botones en `criptomundo-combat.js`, el reproductor del guion en `criptomundo-combat-2.js`. No fue solo por el límite de 70 KB que vigila `test-build` —que se pasó al añadir el reproductor—: son dos cosas distintas, y juntas se leían como si "pedir una acción" y "pintar el resultado" fueran lo mismo.
+
+Un tropiezo por el camino: escribí el selector de objetos con `onclick` dentro del HTML, y como la página vive en un template literal hay que escapar las comillas dos veces. Se escapa mal una vez y el script entero deja de compilar — lo cazó `revisar-cliente.js`. Con listeners no hay comillas que escapar.
+
+## v30 — PASO 7: el combate por turnos tiene forma
+
+Las reglas estaban bien —críticos, fallos, combo, buffs, venenos, aviso del golpe fuerte, fases de jefe, recompensas— y no se ha tocado ninguna. Lo que faltaba era **orden**: `combatAction` resolvía el turno entero en una llamada y devolvía un paquete plano que la pantalla pintaba de golpe. Sin saber en qué secuencia pasaron las cosas no hay nada que reproducir, y un combate por turnos que se resuelve en un fotograma se lee como una hoja de cálculo.
+
+Ahora el turno sale como un **guion** ordenado: `BATTLE_START · PLAYER_TURN · PLAYER_ACTION · PLAYER_ANIMATION · STATUS_EFFECTS · ENEMY_TURN · ENEMY_ACTION · CHECK_VICTORY · BATTLE_END`. Cada escena dice qué pasó y cuánto debe durar en pantalla, y el ritmo vive en el servidor porque es parte de cómo se juega: un crítico que se ve igual que un golpe normal no es un crítico.
+
+Las reglas no se movieron de sitio: solo se anota lo que van haciendo, a medida que lo hacen. Y los campos planos de siempre se quedan al lado, porque romper la pantalla actual no era el encargo — el paso 8 la cambiará para leer el guion.
+
+La prueba no se conforma con que el guion exista: comprueba que sus números son **los mismos** que los del resultado. Un guion que no coincida con lo que pasó es decoración.
+
+**BUG ARREGLADO — once pociones y solo se podía beber una.** La acción de curarse buscaba literalmente `potion_hp`, la Poción de Curación I (220 de vida). El juego tiene once pociones, una escalera de curación de seis escalones y comida con efectos: llevabas el Elixir Mítico en la mochila y bebías la poción más floja porque era la única que el combate sabía reconocer. Ahora vale cualquier objeto que cure, dé maná o deje un efecto —lo dice su propia plantilla, no hace falta una lista aparte—, y si no se elige ninguno se coge la más ajustada a lo que falta de vida, para no gastar el elixir en un rasguño. `/api/combat/objetos` dice qué se puede usar, para que la pantalla no tenga que adivinar qué es una poción por el nombre.
+
+## v30 — Arreglos sobre el paso 6
+
+**La Zarigüeya salía partida por la mitad.** El catálogo declaraba `ancho: 140` para una tira de 420×70 con 3 cuadros. ¿140 es el ancho de cada cuadro o el total? Las dos lecturas son razonables y elegí la mala: dibujaba un tercio de cuadro. Ahora la geometría se mide sobre el propio PNG —ancho total dividido entre número de cuadros— donde no hay nada que interpretar. Además el cuadro se dibuja con su proporción: 140×70 metido en un cuadrado salía aplastado.
+
+**Y el resto del tiempo salía "una imagen de una rata".** Parado no se usaba la tira, sino `laurel_possum_full.png`: una ilustración de 587×500 pensada para la ficha del personaje, encajada a la fuerza en 44 px. Ahora la tira se usa siempre —quieto se queda en el primer cuadro— y cuando no hay tira se prefiere el avatar (96×96, hecho para verse pequeño) antes que la ilustración grande.
+
+**"El personaje se mueve solo": era retroceso, no deriva.** Medido sin tocar una sola tecla durante doce segundos: 65 px de desplazamiento, de los cuales 59 ocurrían en los seis cuadros siguientes a un mordisco. La deriva real eran 6 px, despreciable. Lo que pasaba es que el empujón era 130 fijo para todos, así que el mordisco de una araña te desplazaba 20 px igual que un mandoble, y de pie y quieto eso se vive como perder el control. Ahora el empujón va con lo que pega: total 29 px, empujón mayor de 7,3 a 4,1 px.
+
+Primero lo calibré al revés —usé `40 + daño × 6` suponiendo que las arañas pegaban flojo, y pegan 19, así que salió 154: peor que antes—. Se ve en la medición, no en el código.
+
+**Guardia nueva en el compilador.** Cada página vive dentro de un template literal y una comilla invertida suelta ahí dentro —aunque sea en un comentario— parte el archivo generado en dos. Lo he cometido dos veces en este trabajo. Ahora `build.js` lo caza, dice el archivo y la línea, y se niega a compilar. Comprobado metiendo una a propósito.
+
+## v30 — PASO 6: animaciones completas
+
+El reloj de animación existía desde el paso 1 y viajaba en cada paquete. Lo que faltaba era que alguien lo usara.
+
+**El jugador era un círculo dorado.** Tenía una skin elegida en el creador de personaje —con su dibujo, su emoji y hasta su tira de caminar— y en la arena no se veía ninguna. Ahora se manda su aspecto en el paquete y se dibuja: tira si la skin trae, ilustración si no, emoji si no, y el círculo de siempre si no hay nada. Cuatro escalones, y ninguno puede dejar la pantalla vacía. No hay catálogo de dibujos propio de la arena: se lee el mismo que usan el perfil y el creador.
+
+**Los enemigos recibían su animación y el renderer la ignoraba:** un emoji quieto que se deslizaba por el suelo, pegara, recibiera o muriera. Ahora el golpe se echa atrás y se lanza hacia el jugador —se ve venir en vez de aparecer como un número rojo de la nada—, el dolor encoge, y al caminar hay brinco.
+
+**La animación de muerte no se veía JAMÁS.** El enemigo se borraba de la lista en el mismo tick en que moría: se arrancaba el gesto y en el siguiente paquete ya no había a quién dibujárselo.
+
+Al arreglarlo me equivoqué primero: dejé el cadáver dentro de `enemigos` con una bandera `muerto`. Las pruebas de IA y de arena por HTTP se cayeron en el acto, y por un buen motivo: obligaba a todo el que lee esa lista —las oleadas, la puntería, las pruebas— a acordarse de saltarse los muertos, y quien se olvidara se ponía a pegarle a un cadáver. Los restos van ahora en su propia lista: no tienen vida, no reciben golpes, no cuentan para la oleada. Un muerto no es un enemigo, es un dibujo que se está apagando.
+
+**Un dibujante de tiras para todo** —armas, skins, lo que venga—, que reparte los cuadros según los que tenga la tira y no según los que declare el catálogo: la Zarigüeya tiene 3 y `walk` declara 4. Así una tira de 3, de 6 o de 12 funciona sin tocar código. Y el paquete lleva la dirección en cuatro lados, lista para tiras con una fila por sentido.
+
+## v30 — PASO 5: proyectiles que aciertan y elementos que existen
+
+**Las flechas atravesaban a los enemigos y nadie se enteraba.** El servidor avanza 10 veces por segundo: una flecha a 460 px/s se movía 46 px de golpe y *luego* se miraba si tocaba a alguien. Una araña deja una ventana de 44 px. El hueco entre dos posiciones era mayor que el bicho, así que solo acertaban los disparos casi centrados. Medido: **el 74% de los disparos que debían acertar, acertaban**. El otro 26% pasaba de largo sin daño, sin log y sin nada — desde el asiento del jugador, "el arco falla raro".
+
+Ahora la colisión se hace contra el **tramo recorrido**, no contra la posición final: se pregunta si ha pasado por encima, no si está encima. El tamaño del blanco vuelve a ser su tamaño de verdad, vaya el proyectil a la velocidad que vaya y esté el servidor como esté. Con barrido: 100%.
+
+**Los elementos eran un adorno.** `element: 'ice'` llevaba escrito en la Vara de Cristal desde siempre y no hacía absolutamente nada. Ahora el hielo frena (55% de velocidad, 1,4 s), el rayo aturde de verdad —reutilizando el mismo estado STUN que usa la IA, así que el enemigo deja de pegar y de moverse— y quedan preparados fuego y veneno con daño por tiempo. Los efectos valen para los dos lados: un enemigo con hielo te frena a ti igual.
+
+Y se ven: el enemigo congelado lleva un halo azul, el que arde uno naranja. Un efecto que el jugador no puede ver es un efecto que no ha aplicado.
+
+**Un solo sitio donde nacen los proyectiles** (`src/server/57-proyectiles.js`). Antes había dos trozos de código empujando objetos sueltos a una lista, cada uno con sus campos. Ahora hay una fábrica con todo lo que se le pide —posición, velocidad, dirección, daño, dueño, radio, vida, elemento, empuje, sprite— y hueco para proyectiles que atraviesan a varios enemigos. El color sale del catálogo del servidor: la pantalla no se sabe la lista de elementos.
+
+**Un fallo que me cacé a mí mismo.** Al mover el disparo del jugador a la fábrica me dejé por el camino el cálculo del daño, y quedó una variable `dmg` sin definir. El tick lanzaba excepción, el `try/catch` del bucle la convertía en fin de partida por error, y la arena se cerraba sola sin decir por qué. Lo encontró la prueba nueva: cero proyectiles disparados.
+
+## v30 — PASO 4: los enemigos dejan de ser el mismo bicho con otros números
+
+La IA eran tres conductas escritas como una cadena de ifs, con el estado guardado en cadenas sueltas ('normal', 'avisando', 'cargando') que solo entendía la rama que las escribía. La araña y el esqueleto eran idénticos salvo los números; recibir un golpe no interrumpía nada, así que te seguían pegando en mitad de tu combo como si no lo notaran; y un embestidor que fallaba y se estampaba contra la pared seguía como si tal cosa, sin ventana para castigarle.
+
+**Ahora hay una máquina de estados de verdad** (`src/server/56-ia-enemigos.js`, aparte porque no depende de la arena y el combate por turnos podrá usarla): IDLE, CHASE, ATTACK, HURT, STUN, DEAD, más TELEGRAPH, CHARGE, RANGED y RETREAT para quien los necesite. Las transiciones van por peso —morir gana a todo, un aturdimiento gana a un ataque a medias— para que recibir un golpe mientras cargas no deje al enemigo en dos estados a la vez según el orden de los ifs.
+
+**Y cada uno tiene carácter, no solo estadísticas.** La araña se acerca haciendo eses (con semilla propia: sin ella todas zigzaguean a la vez y parecen una sola), muerde y salta hacia atrás. El esqueleto no retrocede jamás pero levanta el arma antes de pegar, y ese aviso es tu momento. El troll y el golem embisten desde lejos, y si fallan se quedan aturdidos más de un segundo: ahí es cuando se les castiga. El dragón y el demonio se apartan disparando si te acercas demasiado.
+
+Encajar un golpe ahora interrumpe, pero no cualquiera: se compara el daño con la vida máxima y con el aguante del bicho, así que un rasguño a un golem no le hace cosquillas y un golpe muy gordo no traba, aturde.
+
+**Cómo se comprueba que "se sienten diferentes".** No leyendo el código: `test-ia-enemigos.js` juega partidas y mide. Sigue el rastro de cada enemigo y calcula cuánto se desvía de la línea recta hacia el jugador (la araña sale por encima del umbral, los demás no), cuenta por qué estados pasa cada uno, y verifica que esquivando la embestida el troll acaba aturdido. Si mañana alguien simplifica la IA y los deja a todos persiguiendo en línea recta, estas pruebas caen.
+
+Dos arreglos que salieron de medir: el estado real de la máquina no viajaba al cliente —`estado` colapsaba casi todo en 'normal'—, así que ni la pantalla ni las pruebas podían ver si la IA hacía algo; y el troll embestía cuando ya estaba pegado al jugador, con lo que la carga duraba menos de un tick y no se veía. Ahora embiste desde 2,2 veces su alcance y la carga tiene duración mínima. El aturdimiento se dibuja con 💫 y un aro: si no se ve, el jugador no sabe que acaba de ganarse un segundo gratis.
+
+**BUG DETECTADO — balance (pendiente del paso 10):** con la Espada de Diamante equipada, el troll encadena aturdimientos y no llega a cargar nunca. El umbral que convierte un golpe en aturdimiento (30% de la vida máxima) es demasiado bajo frente a las armas de arriba de la tabla.
+
+## v30 — PASO 3: el movimiento se comporta como dice la ficha
+
+**La velocidad de la ficha no era la velocidad real.** El motor sumaba a la velocidad y luego la multiplicaba por 0,82 **una vez por tick**, no por segundo. Dos consecuencias: la física cambiaba según lo cargado que fuera el servidor, y el tope real acababa en ~765 px/s con una `vel` nominal de 210. El número no describía nada y la agilidad se diluía en un factor inventado.
+
+Ahora cada cuerpo lleva **dos velocidades**. `vx, vy` es lo que pides: persigue una velocidad objetivo y nunca la pasa, así que 210 significa 210 y la agilidad se nota. `ex, ey` es lo que te hacen —retrocesos, embestidas, empujones— y no obedece a nadie: sale disparado y se apaga. Antes había una sola, y bastaba con pulsar la dirección contraria para cancelar un retroceso: el `empuje` de las armas era casi decorativo. Medido: un segundo de carrera recorre 197–209 px tanto a 3 como a 60 ticks por segundo.
+
+**Los cuerpos ahora chocan.** No había colisiones en absoluto: los enemigos se posaban justo encima del jugador y pelear era pelearse con un borrón. Son muelles, no muros: se separan por posición repartida según el peso —la araña cede casi todo— más un empujón para que el choque se note. Acorralado contra una pared por dos enemigos, los cuerpos se comprimen hasta un 37% en el 13% de los instantes (mediana 4,6 px de 31). Lo que **nunca** pasa, y es lo que la prueba exige, es que el centro de un enemigo quede dentro del jugador: cero casos en 420 medidas.
+
+Por el camino: las paredes cuentan desde el borde del cuerpo y no desde su centro, contra la pared se pierde solo la velocidad hacia ella —así se sigue deslizando por el borde—, y la esquiva dejó de ser "andar más rápido" para ser un impulso seco que se apaga solo.
+
+**El mando táctil tenía tres fallos que lo hacían inservible.** Apuntar iba pegado al joystick: o te movías o apuntabas. Se leía el primer toque del evento sin mirar de qué dedo era, así que con dos dedos el de la derecha movía el joystick. Y el botón de esquivar activaba la esquiva sin que nadie la desactivara: tras tocarlo una vez, el personaje esquivaba solo cada 1,4 s para siempre. Ahora cada dedo se sigue por su identificador, la mitad derecha apunta con el mismo cálculo que el ratón, y los botones se sueltan.
+
+**Y el movimiento se ve fluido.** El servidor manda 10 posiciones por segundo y la pantalla dibuja 60: pintando la posición cruda se veía a saltos. Cada cuerpo tiene ahora una posición dibujada que persigue a la del servidor. No se predice nada —al fallar, predecir da tirones peores—: solo se recorta la distancia que queda, y un salto grande (reaparición) se salta en vez de arrastrarse.
+
+## v30 — El resultado del combate ya no se pierde
+
+Reportado desde la partida: al vencer a los jefes aparecía **"sin respuesta (28s)"** y el contador subía sin fin. El combate había terminado, pero el jugador se quedaba mirando una pantalla muerta sin recompensa ni pantalla de victoria.
+
+`terminar()` borra la partida del mapa —lo ha hecho siempre, y está bien: el oro y el botín ya se han dado—. El fallo era que el **resultado** moría con ella. Jugando por socket no se notaba porque el bucle lo entregaba en el mismo instante en que se generaba; jugando por HTTP, entre un pulso y el siguiente hay 100 ms, y en ese hueco la partida desaparecía. El pulso siguiente solo encontraba un 404, que el cliente ignoraba en silencio mientras seguía girando en vacío.
+
+Ahora el final espera en un buzón hasta que alguien lo recoja, **venga por donde venga**: socket, pulso HTTP o botón de abandonar. Se entrega una sola vez —es la noticia, no el premio— y caduca a los dos minutos para que cerrar la pestaña no deje restos guardados. Esto arregla de paso un fallo latente del camino por socket: si la conexión se caía en el tick exacto del final, el resultado también se perdía.
+
+En el cliente, un 404 ya no es un callejón sin salida: tras una docena de respuestas vacías el pulso pregunta al servidor si el combate sigue vivo y actúa —enseña el resultado o vuelve al menú—. Nunca deja al jugador delante de un contador.
+
+**La prueba se validó al revés antes de darla por buena.** `test-arena-http.js` gana una partida entera sin abrir un solo socket y recoge el resultado; con el código anterior falla con "404: el resultado se perdió por el camino". Una prueba que no caza el bug que dice cazar no vale nada.
+
+## v30 — PASO 2: cada arma se mueve a su manera
+
+Tras el paso 1 la espada ya se veía, pero todas las armas hacían el mismo gesto: un barrido. La lanza barría, el hacha barría, la daga barría. Cambiar de arma se notaba en los números y no en las manos.
+
+**Cinco gestos.** El barrido de las espadas, el **tajo alto** del hacha y el garrote (sube por encima del hombro y cae acelerando, con la hoja creciendo al impactar), la **estocada** de la lanza (no gira: sale disparada por el eje de puntería 53 px y vuelve), el **pinchazo** corto de la daga y el **disparo** de arcos y varas (se tensa hacia atrás y suelta de golpe). Verificado ejecutando la tabla: el hacha gira 115°, la lanza 7°, y las cinco vuelven exactamente a la guardia sin deriva acumulada.
+
+El gesto se declara donde se declara el resto de la conducta del arma, en `ARMAS`. No hay un catálogo paralelo de animaciones. Y un arma que no lo declare no se queda sin movimiento: se deduce de sus propios números (si dispara, gesto de disparo; si el arco es estrecho, estocada).
+
+**Es solo presentación, y hay una prueba que lo vigila.** Que el hacha se vea venir de arriba no cambia a quién alcanza: el daño, el alcance y el arco los sigue decidiendo el servidor. La prueba lee el bloque de gestos de la página y falla si aparece cualquier cálculo de daño ahí dentro.
+
+**El arma ya no sale boca abajo.** Apuntando a la izquierda, girar el dibujo dejaba la hoja mirando al suelo y el mango arriba. Ahora se espeja en vertical, como cualquier juego 2D con sprites laterales.
+
+**Tiras de cuadros, listas antes que el arte.** Si aparece `assets/items/anim/<id>.png` con los cuadros cuadrados en fila, el servidor lo detecta solo, cuenta los cuadros dividiendo ancho entre alto y el renderer recorta el que toque —el que decide el servidor, no el cliente—. Añadir la animación de un arma será copiar un archivo, sin tocar código. La prueba se fabrica su propia tira de 4 cuadros para comprobarlo, porque andamio sin probar no es arquitectura: es una promesa.
+
+## v30 — La arena dejó de depender del WebSocket
+
+Un jugador no podía moverse. El diagnóstico terminó siendo que **la petición de WebSocket no llegaba a Node**: cero rechazos y cero sockets abiertos, con HTTP funcionando perfectamente. Eso pasa por cosas que no están en este código —un antivirus que inspecciona tráfico, un proxy, una extensión— y no se arreglan desde aquí.
+
+El defecto de fondo era otro: **el socket era obligatorio**. Si fallaba, la arena quedaba muerta y muda. El launcher ya tenía plan B para el chat; la arena no tenía ninguno.
+
+Ahora `POST /api/arena/sync` lleva la intención y trae el estado en una sola petición. Mismo servidor decidiendo, mismo saneo, mismas reglas: cambia el transporte, no quién manda. La página lo usa sola cuando el socket no hay manera, y lo dice en la barra. `test-arena-http.js` juega una partida entera por ahí **e intenta hacer trampa por ese mismo camino** —curarse, fijarse la animación, regalarse oro—: abrir un transporte nuevo no puede abrir un agujero.
+
+**Por qué costó tanto encontrarlo.** `test-arena.js` hablaba con el servidor a pelo, sin ejecutar nunca el JavaScript de la pantalla: comprobaba que el motor funciona, no que la pantalla lo use. Es el mismo agujero de la v29. `test-arena-navegador.js` descarga la página, extrae sus `<script>` y **los ejecuta** contra el servidor real. Con él salieron dos fallos que ninguna prueba anterior podía ver: `requestAnimationFrame` estaba dentro de la función que pinta, así que una sola excepción congelaba el lienzo para siempre y en silencio; y `ws.onclose` era `ws = null` y nada más, sin reconectar ni avisar. Los dos se viven igual desde el asiento del jugador: "no me puedo mover".
+
+Y como el navegador esconde a propósito el código HTTP con el que rechaza un WebSocket, ahora lo cuenta el servidor: cada rechazo queda registrado con motivo y la página lo pregunta por HTTP cuando falla.
+
+## v30 — PASO 1: las espadas se ven (y el bug tenía dos mitades)
+
+El síntoma era claro: forjas la Espada de Hierro, la equipas, entras en la arena y no la ves por ningún lado. Al abrir el capó había **dos fallos encadenados**, y arreglar solo uno no habría cambiado nada en pantalla.
+
+**Mitad 1 — nadie la dibujaba.** El renderer de la arena pintaba al jugador como un círculo dorado con una raya amarilla de dirección. Además el servidor no mandaba el arma: en el paquete de estado viajaba `arma: "Espada de Hierro"`, un texto. Con un texto no se dibuja nada. Ahora viaja `armaVis` con el dibujo, el ángulo del sprite, el alcance y el arco, y el cliente lo pinta en la mano del personaje, girado hacia donde apuntas.
+
+**Mitad 2 — los PNG tenían el fondo opaco.** Blanco en la de piedra, gris azulado en hierro y diamante. Aunque el renderer las hubiera dibujado, se habrían visto como un cuadrado tapando al personaje. Esto no se arregla con código de dibujado: `aplicar-transparencia-armas.js` recorta el fondo por inundación desde el borde (un brillo dentro de la hoja no se convierte en agujero) y guarda los originales en `assets/items/originales/`.
+
+**Una sola verdad por arma.** `ARMAS` (cómo pega: alcance, arco, cadencia, empuje) y `ITEM_TEMPLATES` (cómo se ve: nombre, icono, dibujo) se fusionan en `armaVista()`. No hay un tercer catálogo con sprites: cambiar el dibujo de la Espada de Hierro es tocar un sitio y lo ven el inventario, el perfil y la arena a la vez. El catálogo fusionado se publica en `/api/arena` para que se pueda comprobar desde fuera que no hay dos verdades.
+
+**Base de animación** (`src/server/57-animaciones.js`), a propósito fuera del combate: idle, walk, attack, hurt, dodge y death, con prioridades —recibir un golpe corta un ataque, un ataque no corta el recibir— y el ataque dividido en preparación → golpe → recuperación. La animación es **estado del servidor**: viaja en el mismo paquete que la vida y la posición, y el cliente solo adelanta el cronómetro entre paquetes para que el gesto no vaya a saltos de 100 ms. Un mensaje del cliente pidiendo `anim: 'death'` se ignora, igual que se ignora si pide vida o botín.
+
+**La regla del dibujo, en todas las pantallas:** si el objeto trae `imagen` se pinta la imagen; si no, el emoji de `icon`. Los objetos antiguos no traen imagen, así que el emoji no es un adorno: es el camino normal para casi todo el inventario. El `alt` de cada `<img>` lleva el emoji, de modo que si un PNG desaparece el navegador pinta el emoji solo, sin JavaScript.
+
+**Una prueba que mentía.** `test-espadas.js` comprobaba que cada PNG pesara más de 300 bytes. Era un "no está vacío" a ojo, y dejó de valer al recortar el fondo: el archivo bueno pesa **menos** que el malo. Ahora comprueba lo que importa —firma PNG, 32×32 y canal alfa— en vez del peso. Sin ese último punto, una espada con el fondo relleno volvería a pasar el test y a verse como un cuadrado gris.
+
+## v29 — La arena estaba injugable
+Primera prueba con jugadores reales. El fallo grave: **el estado del combate se enviaba al primer socket del jugador, que en el juego real es el del launcher** (chat y presencia), no el de la pantalla de arena. Las entradas llegaban, la partida corría, pero la pantalla no recibía nada: congelada, sin poder moverse ni atacar.
+
+Mis pruebas abrían **un solo socket**, y con uno solo el primero es también el correcto: pasaban en verde mientras el juego estaba roto para cualquier persona. La prueba ahora abre dos a propósito.
+
+También: el mismo aspecto de personaje en todas las pantallas, y el perfil se abre pulsando el avatar de la barra superior — el panel de equipamiento existía desde la v20 pero estaba escondido, que es por qué "no se podía equipar nada".
+
+Ver `docs/RESPUESTA_A_LA_PRUEBA.md` para el plan del resto.
+
+## v28 — Pulido final antes de la prueba
+- **Los efectos activos se ven en la barra superior**, con su icono, el bono y el tiempo que queda, y parpadean en los últimos 30 segundos. Sin esto, beber una poción de fuerza no se distinguía de no beberla.
+- **La primera pieza de armadura ya no depende de la suerte**: el coto de caza da 3-5 cueros y la capucha cuesta 3, así que un solo viaje basta. Antes hacían falta dos a veces, lo que en el arranque se siente como que el sistema está roto.
+- Diagnóstico final sin nada de prioridad alta y 408 pruebas en verde.
+
+## v27 — Más recetas, cultivos, armas y armaduras
+De 5 recetas a **30**: 19 en la forja, 6 de alquimia y 5 de cocina.
+
+**Pociones con efecto real.** Fuerza, Velocidad, Piedra y Sabiduría dan +14/+16 a su estadística durante 5 minutos. No es un icono: hay un sistema de efectos temporales que entra en el cálculo de estadísticas, así que valen igual en el combate por turnos, en la arena y en las mazmorras. Tomar dos iguales renueva el tiempo pero **no acumula el bono**, para que no se conviertan en la única táctica.
+
+**La agilidad ahora mueve.** En la arena, la velocidad de movimiento sale de la agilidad (hasta +45%), así que la Poción de Velocidad se nota al andar y no solo en la ficha.
+
+**Seis armas nuevas** (garrote, hacha, lanza, arco corto, vara de cristal, filo escarchado), cada una con su alcance, cadencia y arco en el motor de arena: la lanza pincha lejos en un cono estrecho, el hacha pega fuerte y lento, el arco dispara.
+
+**Ocho piezas de armadura** que completan los juegos de cuero, hierro y cristal, cubriendo casco, pecho, guantes, botas y accesorios.
+
+**Tres cultivos nuevos** —maíz, calabaza y chile— más miel de una colmena silvestre, y cuatro comidas que curan y además dejan un efecto, que es la razón para cocinar en vez de beber pociones siempre.
+
+**Un agujero que salió al probarlo:** el cuero solo caía como botín aleatorio, así que podías quedarte sin poder fabricar ninguna armadura ligera. Se añadió el coto de caza en el bosque. Hay una prueba que verifica que **ningún cultivo ni material recolectable se queda sin una receta que lo use**: trabajo del jugador que no sirve para nada es peor que no tener el material.
+
+## v26 — Saber dónde deja de jugar la gente
+Preparando la prueba con jugadores, faltaba el dato que ninguna encuesta acierta. La pregunta "¿en qué momento dejaste de tener ganas?" se contesta mal de memoria, pero el servidor puede responderla solo: ahora el launcher avisa de en qué pantalla está el jugador, y el panel muestra **minutos por pantalla y desde cuál se fue cada uno**.
+
+Con eso, tras un fin de semana de beta sabrás si la gente se va desde el mapa (no encuentran qué hacer), desde el combate (aburre) o desde el mercado (no entienden los precios). Son tres problemas distintos con tres arreglos distintos.
+
+El módulo se valida contra una lista blanca: una pantalla inventada no ensucia el informe.
+
+**Y un fallo real que salió al ejecutar la suite completa**: el inyector de la capa de red borraba su bloque y lo volvía a añadir al final, lo que lo movía por detrás del bloque de avisos. Reaplicarlo cambiaba el archivo aunque el contenido fuera idéntico. La prueba de idempotencia lo cazó, y solo fallaba al ejecutar las suites en orden, nunca en aislado — el tipo de fallo que uno tiende a descartar como "cosas de la máquina". Ahora el bloque se sustituye en su sitio.
+
+## v25 — Retirar el sistema de mazmorras viejo
+Desde la v22 convivían dos sistemas de mazmorras: el nuevo, de salas y combate real, y el de "pulsar Avanzar", que ya no usaba nadie pero seguía respondiendo. Antes de tocarlo se comprobó que estaba muerto de verdad: la pantalla se había reescrito y lo único que quedaba era un puente huérfano en el launcher que ninguna página invocaba.
+
+Se retira en vez de dejarlo desconectado porque **código muerto que parece vivo ya nos costó un diagnóstico equivocado**: el `doctor.js` probaba ese endpoint y no el que usa el juego, así que decía que la mazmorra funcionaba mientras la de verdad no se estaba comprobando.
+
+Con ello se fueron el catálogo antiguo, sus endpoints, el puente del launcher y las funciones asociadas. La misión "Las Profundidades" apunta ahora a la mazmorra real, y el registro de actividad muestra los eventos nuevos (arena y mazmorra) en vez de uno que ya no se emitía.
+
+También se igualó a 3 segundos la espera de arranque en todas las suites: varias fallaban de forma intermitente cuando la máquina iba cargada, y una prueba que falla a veces enseña a ignorar los fallos.
+
+## v24 — Integrar lo nuevo con lo que ya había
+Después de tres versiones grandes seguidas, revisión de las costuras. Dos huecos reales:
+
+**Nadie iba a descubrir la arena ni el huerto.** Estaban en el menú, pero Primeros pasos —la lista que guía al jugador nuevo— seguía hablando solo de los sistemas de antes. Ahora tiene diez pasos e incluye recolectar agua, sembrar y cosechar, y ganar en la arena. Con sus eventos en el embudo, así que en `/admin.html` se verá cuánta gente llega a cada uno.
+
+**El diagnóstico probaba la mazmorra vieja.** `doctor.js` seguía llamando al endpoint heredado y no sabía nada de arena, recolección ni huerto. Ahora prueba los ocho recorridos, y cuando algo falla dice el motivo del servidor en vez de "HTTP 400": resultó que la mazmorra se negaba a abrirse porque el bot llegaba malherido, que es exactamente lo que debe hacer. Un fallo aparente que era el comportamiento correcto mal contado.
+
+## v23 — Sube tu propio personaje
+Última pieza de la lista. Se elige una imagen, el navegador la **recorta en círculo con fondo transparente** y borde dorado antes de subir nada, y el servidor comprueba que lo que llega es de verdad lo que se pidió: firma PNG real (no la extensión), cuadrada, dentro de rango de tamaño y **con canal alfa**.
+
+Ese último requisito es la lección de la v10: dos ilustraciones con el fondo incrustado convirtieron al personaje en un cuadrado sobre el mapa. Con imágenes de desconocidos eso pasaría siempre, así que ahora es imposible subir una sin transparencia.
+
+El archivo se nombra por el hash de su contenido (nada que mande el cliente toca la ruta), se escribe con temporal y renombrado, sustituye al anterior sin acumular basura, y se puede quitar para volver a una skin normal. Aparece en el catálogo como una skin más, así que el creador, el perfil, la barra superior y el mapa la usan sin saber que es especial.
+
+27 pruebas, incluidas las de un JPEG renombrado a PNG, imágenes sin alfa, no cuadradas, demasiado grandes y un intento de salirse de la carpeta de subidas.
+
+## v22 — Mazmorras jugables
+Las de antes eran un botón "Avanzar" que no hacía nada: se pulsaba tres veces y se cobraba. Ahora el servidor genera un mapa con semilla y en **cada piso hay dos salas entre las que elegir**: guardia, guardián, cofre (que puede estar trampeado), pasillo con trampas, santuario y, al final, la sala del jefe.
+
+Los combates se juegan con el motor de la v21 — enemigos reales, en tiempo real. El botín y la XP se **acumulan en la run** y solo se cobran si sales con vida; morir los pierde y retirarse a tiempo te deja la mitad. Eso convierte la elección de sala en una decisión de verdad: ¿cofre o santuario con la vida a la mitad?
+
+Verificado jugando una Cripta entera: 4 pisos, 6 bajas, 756 XP, 279 de oro y siete objetos al inventario, con el contador de mazmorras del perfil actualizado.
+
+## v21 — Combate en tiempo real
+Segundo sistema de combate, sin tocar el de turnos. Simulación **en el servidor** a 10 pasos por segundo; el cliente solo manda intenciones y dibuja. Retroceso, alcance y arco de arma, proyectiles, esquiva con invulnerabilidad, y tres conductas de enemigo (perseguidor, tirador y embestidor que avisa antes de cargar). El arma equipada cambia cómo se juega. Bajas, XP y botín entran por las mismas vías que el resto del juego.
+
+Tres pruebas intentan hacer trampa por el socket (declarar daño, declarar enemigos muertos, declararse ganador) y las tres fallan como deben. Verificado jugando: un bot que pelea gana; uno que se queda quieto muere.
+
+Además, huerto y recolección tienen ya su pantalla, y ambos están en el menú. Detalle en `docs/CAMBIOS_V21.md`.
+
+## v20 — Arreglos de la partida real y sistemas nuevos
+Diez puntos revisados tras una sesión de juego. Los grandes: el mapa usaba `bosque`/`minas` y el servidor `forest`/`mines`, así que **viajar fallaba en silencio** y con ello desaparecían los enemigos; el **agua y el trigo no los daba nada**, lo que dejaba pociones y pan bloqueados para siempre; y `/api/player/equip` existía pero **ninguna pantalla lo llamaba**, por eso no se podía equipar lo fabricado.
+
+Nuevos: recolección por nodos con enfriamiento, huerto con crecimiento en tiempo real, panel de inventario y equipo en el perfil, aceptar misiones desde el NPC, perfil completo con 12 medallas calculadas de contadores reales, y validación de skins que retira del catálogo las que no puedan funcionar. Detalle en `docs/CAMBIOS_V20.md`.
+
+## v19 — El mundo deja de ser una pantalla
+Hasta ahora cada zona cabía justo en la ventana y el personaje chocaba contra el borde del navegador. Ahora cada zona es un mapa de 1800×1200 con **cámara que sigue al jugador**: se explora de verdad, y en un móvil ya no se ve todo el mapa de un vistazo.
+
+- **Los edificios son sólidos.** Colisión probada eje por eje, para poder deslizarse a lo largo de una pared en vez de quedarse clavado al tocarla en diagonal.
+- **Se entra por el lado opuesto al que se sale.** Si sales por el norte, apareces al sur de la zona siguiente: el mundo se siente continuo al ir y volver.
+- **Minimapa de zona**, abajo a la derecha: los edificios a escala y tu posición dentro del mapa. Antes solo se veía en qué zona estabas, lo cual bastaba cuando la zona era una pantalla.
+- Las posiciones de NPCs y edificios estaban escritas para un lienzo de 900×650: se reescalan al mundo grande en vez de reescribirlas todas a mano.
+
+También se estabilizó una prueba de combate que fallaba de vez en cuando por temporización y no por un fallo real.
+
+## v18 — Apartado gráfico y protocolo de prueba
+**Mapa.** El suelo era un color plano con una rejilla encima. Ahora se pinta con manchas de dos tonos generadas con semilla fija por zona (cambia entre zonas, no parpadea al volver), senderos que guían la vista hacia las salidas, viñeta en los bordes y tinte de ambiente propio: el pueblo cálido, el bosque verdoso, las minas oscuras, las ruinas moradas. Cada zona salpica sus propios detalles (hierba y flores, setas y hojarasca, picos y gemas, calaveras y velas).
+
+Las estructuras dejan de ser recortes de papel: sombra proyectada, banda de techo más clara y base oscurecida. NPCs y monstruos tienen sombra bajo los pies, y en las zonas oscuras el jugador lleva un halo de luz que además ayuda a ver por dónde anda.
+
+**Todas las páginas.** Transiciones suaves, elevación al pasar por encima de las tarjetas, brillo propio para épico, legendario y mítico —se distinguen sin leer—, y aparición suave de los paneles. Todo respeta `prefers-reduced-motion`.
+
+**`docs/PRUEBA_DE_JUEGO.md`**: el protocolo para la primera prueba con gente. Qué dejar listo, qué pedirles (y qué no hacer: no explicarles cómo se juega, no parchear en caliente), qué mirar cada día en el panel, cómo ordenar lo que salga y las tres preguntas que la prueba tiene que dejar contestadas.
+
+## v17 — Avisos desde dentro del juego
+Botón "💬 Aviso" en todas las páginas de juego. El jugador escribe qué ha pasado; el contexto va solo: página, versión, nivel del personaje, tamaño de pantalla y navegador. Los avisos se ven en `/admin.html`, se pueden marcar como resueltos y reabrir.
+
+Por qué: en una beta los fallos llegan por chat a medias — "no me iba el mercado, creo que ayer". Con esto llegan con lo que hace falta para reproducirlos. Funciona sin haber iniciado sesión, porque los fallos del registro son justo los que nadie puede reportar estando dentro.
+
+Deliberadamente simple: un texto y tres tipos. Un formulario largo no lo rellena nadie.
+
+## v16 — Ensayo del despliegue
+Copiar solo `criptomundo.js` y `assets/` a una carpeta limpia y arrancar como en producción. El juego funciona, pero apareció una trampa: con `NODE_ENV=production` la cookie de sesión lleva `Secure`, así que **el navegador solo la envía por HTTPS**. Sin TLS por delante, el registro parece ir bien y a partir de ahí todo responde "no autorizado" — un síntoma que no se parece en nada a su causa, y que habría costado una tarde de depuración con testers esperando.
+
+Ahora el servidor lo detecta (mirando `X-Forwarded-Proto` para no dar falsos positivos detrás de un proxy) y lo avisa por consola en cuanto ocurre. `/api/health` expone `tlsDetectado`.
+
+El paquete mínimo para desplegar son dos cosas: el ejecutable y la carpeta `assets/`. 8,4 MB en total.
+
+## v15 — Concurrencia: no se puede duplicar dinero
+El servidor es de un solo hilo y sus manejadores no tienen `await` después de leer la petición, así que **en teoría** cada operación económica es atómica. Esta versión lo convierte en algo verificado: 17 pruebas que disparan peticiones **a la vez**, no en fila.
+
+Comprobado que no se puede: comprar dos veces la última unidad de una publicación, cancelar y vender el mismo objeto simultáneamente, cobrar cinco veces la misma recompensa de Primeros pasos, duplicar con la misma clave de idempotencia, unirse dos veces al mismo gremio, abrir dos mazmorras a la vez ni **cobrar tres veces la recompensa de una run** (esta última grindea un personaje hasta nivel 5 y completa la Cripta de verdad; tarda un minuto y es la que más valía la pena).
+
+Sin fallos encontrados. Un resultado negativo, pero de los que dejan dormir: la parte del juego donde un error se traduce en oro infinito está cubierta.
+
+## v14 — Estabilidad en ejecución larga
+Auditoría de las estructuras que crecen mientras el servidor está encendido. Apareció un **fallo real**: la limpieza del mapa de contadores de rate limiting estaba escrita como una línea suelta fuera de toda función, así que solo se evaluaba una vez al arrancar y en la práctica **nunca se limpiaba**. Con una IP por jugador y una clave por tipo de acción, ese mapa crecía sin techo durante semanas.
+
+Corregido, y de paso acotados el historial de mercado en memoria y la retención de la telemetría (72 horas y 90 días, cuando los informes solo usan 48 horas y 30 días).
+
+Suite nueva de 20 pruebas que incluye 400 peticiones seguidas y una espera real de 65 segundos para comprobar que el servidor se recupera solo cuando expira la ventana del limitador.
+
+## v13 — Cuando se cae la conexión
+Hasta ahora, si el servidor no respondía, el juego se quedaba mudo: los `catch {}` de cada página se tragaban el error y el jugador veía una pantalla que no reaccionaba, sin saber si era su wifi, el servidor o el botón. En una beta eso se reporta como "se ha colgado".
+
+Capa compartida en las 13 páginas: aviso visible al perder y al recuperar la conexión, reintento automático de las **lecturas** con espera creciente, y **ninguna repetición de escrituras** — reintentar un POST puede comprar dos veces. De propina, foco visible para navegar con teclado y el aviso anunciado a lectores de pantalla.
+
+## v12 — Orden en la casa
+Sin funciones nuevas. El ejecutable se llamaba `criptomundo-v3.js` estando en la v11, la documentación eran nueve archivos sueltos en la raíz y la versión estaba copiada en tres sitios que ya habían divergido (el banner decía v9). Ahora: `criptomundo.js`, un `README.md` de entrada, este historial, `docs/` para el resto, y una única `VERSION` que la compilación comprueba contra `package.json`.
+
+## v11 — Prueba de carga
+Convertir en dato la afirmación "el JSON aguanta". **300 jugadores simultáneos: 330 peticiones/s, p95 de 44 ms, cero fallos.** Descubrió que el cuello de botella real no es la persistencia sino `scrypt` en registros masivos: mil entradas de golpe atascan el arranque aunque el juego siga fluido.
+
+## v10 — Zarigüeya Laureada y skins animadas
+Séptimo personaje, y el primero animado. El campo `sprites` deja de ser una promesa de la guía y se usa de verdad en el creador y en el mapa. Las skins sin animación siguen funcionando igual.
+
+## v9 — Controles táctiles
+El mapa se movía solo con teclado, o sea que en un móvil no se movía. Joystick virtual con zona muerta y botón de acción, visibles solo en pantallas táctiles.
+
+## v8 — Que funcione en el móvil
+Las nueve páginas tenían tres columnas fijas: en un teléfono el contenido central quedaba en 40 px. Bloque de CSS móvil compartido, aplicado por script para no acabar con trece versiones distintas.
+
+## v7 — Beta cerrada por invitación
+Códigos con etiqueta de origen para meter a diez personas concretas y saber de dónde viene cada una. Sin `INVITE_ONLY=1` nada cambia.
+
+## v6 — Primeros pasos
+Los datos decían que solo el 50 % aceptaba una misión y el 40 % la completaba, aunque era gratis desde el minuto uno. No era dificultad: nadie sabía que existía. Lista de siete objetivos que se marca sola con lo que el jugador ya hace.
+
+## v5 — Tiempo real y datos a salvo
+WebSocket implementado a mano para chat y presencia; escritura atómica y copias rotadas con recuperación automática si el archivo se corrompe. Encontró un fallo de sockets a medias que contaba jugadores fantasma.
+
+## v4 — Ejecutarlo y medirlo
+`doctor.js` y `simular-jugadores.js`. Al ejecutarlos por primera vez salieron tres problemas de balance invisibles leyendo el código: 8,4 turnos por enemigo, 29 enemigos para llegar a nivel 5, y solo un 10 % alcanzando la primera mazmorra. Corregidos a 4,7 turnos, 12 enemigos y 100 %.
+
+## v3 — Autoridad del servidor
+El punto de partida de todo. El cliente calculaba el combate, el precio de compra, el progreso de misión y el resultado del PvP, y el servidor se lo creía. Se reescribió entero: nueve páginas pasaron a ser clientes finos. Detalles en `docs/HISTORIA_V3.md`.
