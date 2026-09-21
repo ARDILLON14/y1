@@ -16,6 +16,8 @@ Fecha: 2026-09-21 · Base auditada: commit de importación del zip `criptomundo-
 > - §3.1 la recolección física no tenía cliente — **STEP 2**
 > - §5.2 el golpe de la arena no tenía ventanas — **STEP 3** (a medias)
 > - §2.2 el +HP del equipo no contaba en los turnos — **STEP 4**
+> - §2.3 la pestaña de PvP era una pantalla en blanco — **STEP 5**
+> - §3.3 el PvP del servidor no tenía cliente — **STEP 5**
 
 Este documento es el resultado de la FASE 0. **No se ha modificado ni una
 línea de gameplay.** Todo lo que sigue está comprobado contra el código o
@@ -192,6 +194,12 @@ combate por turnos. Es exactamente el fallo de la FASE 13: craft → equip →
 stats funciona, y se rompe en el último eslabón.
 
 ### 2.3 La pestaña de PvP no existe
+
+> ✅ **Resuelto en el STEP 5.** El panel existe y usa el CSS que ya
+> estaba escrito. El servidor devuelve además el duelo asalto a asalto,
+> y la pantalla lo reproduce. Lo cubre `test-pvp-pantalla.js`, que sin
+> el panel falla catorce veces. Sigue siendo un rival generado por el
+> servidor, no otra persona: eso es §3.2, y la pantalla lo dice.
 
 `src/pages/criptomundo-mazmorras-pvp.js`:
 

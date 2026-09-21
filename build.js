@@ -42,6 +42,7 @@ const PAGE_ORDER = [
   'criptomundo-mercado',
   'criptomundo-misiones',
   'criptomundo-mazmorras-pvp',
+  'criptomundo-mazmorras-pvp-2',
   'criptomundo-casas',
   'criptomundo-guilds',
   'criptomundo-hub',

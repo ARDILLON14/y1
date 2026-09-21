@@ -4,6 +4,36 @@ Cada versión con lo que la motivó. Los detalles completos están en `docs/CAMB
 
 ## v32 (en curso) — El mundo deja de pelear consigo mismo
 
+### La pestaña de PvP ya no es una pantalla en blanco
+
+Pulsar "PVP — ARENA" escondía las mazmorras y no enseñaba nada. La
+pestaña llamaba a `setMode('pvp')`, que buscaba un elemento con id
+`pvp-mode`, y ese elemento no existía en toda la página. Sin error
+visible: pantalla en blanco y a otra cosa.
+
+Mientras tanto el servidor tenía desde hacía versiones emparejamiento
+por Elo, simulación asalto a asalto y apuesta de oro, con pruebas en
+verde comprobando que el cliente no puede declarar el resultado. No lo
+llamaba nadie. Y había ciento veinte líneas de CSS escritas para ese
+panel —`.pvp-layout`, `.pvp-fighter`, las animaciones de golpe y
+sacudida— sin una sola etiqueta que las usara.
+
+El panel nuevo no inventa estilos: usa los que ya estaban ahí esperando.
+
+**El servidor ahora devuelve el duelo, no solo el veredicto.** Mandaba
+el resultado y el número de asaltos, así que la pantalla solo podía
+decir "has ganado". El intercambio asalto a asalto ya lo calcula —lo
+necesita para saber quién gana— y tirarlo obligaba a quien dibujara a
+inventarse la pelea o a no enseñarla. Ahora viaja tal cual, igual que el
+guion del combate por turnos, y la pantalla lo reproduce con las barras
+de vida bajando golpe a golpe.
+
+**Y dice lo que no es.** El rival lo genera el servidor a partir de tu
+Elo: es un rival de tu nivel, no otra persona conectada. Player contra
+player de verdad necesita que el mundo lleve la posición y el estado de
+los dos en el servidor, y eso es la fase de multijugador. La pantalla lo
+dice en la ficha en vez de dejarlo creer.
+
 ### El equipo que da vida ya cuenta en los turnos
 
 `char.maxHp` es la vida BASE: la que dan la clase y el nivel. El equipo

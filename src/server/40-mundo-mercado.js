@@ -247,10 +247,26 @@ function runPvpMatch(char, wagerGold) {
   track('pvp_match', char.name)
   step(char.name, 'first_pvp')
   persist()
+  const st = effectiveStats(char)
   return {
     success: true, matchId: match.id, opponent: opp.name, opponentRating: opp.rating,
     result: match.result, newRating: char.pvpRating, ratingChange: delta,
     newGold: char.gold, newCgrid: char.cgrid, wager, rounds: sim.rounds.length, levelUps: [],
+    // El combate, no solo el veredicto.
+    //
+    // Se devolvían únicamente el resultado y el número de asaltos, así
+    // que la pantalla solo podía decir "has ganado". El servidor ya
+    // calcula el intercambio asalto a asalto —lo necesita para saber
+    // quién gana—, y tirarlo obliga a quien dibuje a inventarse la
+    // pelea o a no enseñarla. Aquí va tal cual, igual que el guion del
+    // combate por turnos: el cliente lo REPRODUCE, no lo decide.
+    duelo: {
+      semilla: seed,
+      tu: { nombre: char.name, nivel: char.level, hpMax: st.maxHp, rating: char.pvpRating - delta },
+      rival: { nombre: opp.name, nivel: opp.level, hpMax: opp.stats.maxHp, rating: opp.rating },
+      asaltos: sim.rounds,
+      hpFinalTuyo: sim.hpA, hpFinalRival: sim.hpB,
+    },
   }
 }
 

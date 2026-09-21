@@ -787,6 +787,63 @@ document.addEventListener('visibilitychange', function () { if (!document.hidden
 setInterval(function () { if (!document.hidden && MZ.run && MZ.run.enCombate) cargar() }, 4000)
 
 </script>
+</div><!-- /dng-mode -->
+
+<!-- ════════ MODO PVP ════════
+     El panel que faltaba. setMode('pvp') buscaba un elemento con este
+     id y no existía en toda la página: pulsar la pestaña escondía las
+     mazmorras y no enseñaba nada. Pantalla en blanco.
+
+     Y había ciento veinte líneas de CSS escritas para él —.pvp-layout,
+     .pvp-pool, .pvp-fighter, las animaciones de golpe y sacudida— sin
+     una sola etiqueta que las usara. Este panel no inventa estilos: usa
+     los que ya estaban ahí esperando.
+-->
+<div id="pvp-mode" style="display:none">
+  <div class="pvp-layout">
+
+    <div class="pvp-pool" id="pvp-pool">
+      <div class="cf-label" style="padding:4px 2px">Tu ficha</div>
+      <div id="pvp-ficha" style="font-size:12px;color:#7A7060">Cargando…</div>
+    </div>
+
+    <div class="pvp-center">
+      <div class="pvp-arena-visual">
+        <div class="pvp-arena-glow-l"></div>
+        <div class="pvp-arena-glow-r"></div>
+        <div class="pvp-fighter" id="pvp-tu">
+          <div class="pvp-fighter-sprite">🧝</div>
+          <div class="pvp-name-tag" id="pvp-tu-nombre">Tú</div>
+          <div class="pvp-hp-bar"><div class="pvp-hp-fill you-hp" id="pvp-tu-hp" style="width:100%"></div></div>
+        </div>
+        <div class="pvp-vs">VS</div>
+        <div class="pvp-fighter enemy" id="pvp-rival">
+          <div class="pvp-fighter-sprite">🥷</div>
+          <div class="pvp-name-tag" id="pvp-rival-nombre">—</div>
+          <div class="pvp-hp-bar"><div class="pvp-hp-fill opp-hp" id="pvp-rival-hp" style="width:100%"></div></div>
+        </div>
+      </div>
+
+      <div class="bet-section">
+        <span class="bet-label">Apuesta</span>
+        <div class="bet-chips" id="pvp-apuestas"></div>
+        <div class="bet-info">Tu oro: <b id="pvp-oro">—</b></div>
+      </div>
+
+      <div class="pvp-log" id="pvp-log"></div>
+
+      <div class="pvp-action-bar">
+        <button class="pvp-ready-btn" id="pvp-btn" onclick="pvpDuelo()">BUSCAR DUELO</button>
+      </div>
+    </div>
+
+    <div class="pvp-pool" id="pvp-lb">
+      <div class="cf-label" style="padding:4px 2px">Clasificación</div>
+      <div id="pvp-lb-cuerpo" style="font-size:12px;color:#7A7060">Cargando…</div>
+    </div>
+
+  </div>
+</div>
 <!-- ===== RED-CLIENTE:FIN ===== -->
 <!-- ===== RED-CLIENTE:INICIO (generado por aplicar-red-cliente.js) ===== -->
 <style>
