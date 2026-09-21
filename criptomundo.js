@@ -20073,11 +20073,39 @@ const BACKUP_KEEP = Number(process.env.BACKUP_KEEP || 12)
 const BACKUP_EVERY_MS = Number(process.env.BACKUP_EVERY_MS || 30 * 60 * 1000)
 let lastBackup = 0
 
+// Lo que sobrevive a un reinicio y lo que no.
+//
+// Hasta ahora las sesiones NO se guardaban. La cookie del navegador dura
+// siete dias, pero el token que valida esa cookie vivia solo en memoria,
+// asi que cada despliegue echaba a todo el mundo a la pantalla de login
+// sin ningun aviso. El sintoma ("me ha cerrado la sesion sola") no se
+// parece a la causa ("han reiniciado el servidor").
+//
+// Lo mismo pasaba con las batallas por turnos: el codigo ya preveia
+// encontrarse partidas a medias guardadas de antes (ver escalaDaño en
+// 30-personajes-combate.js), pero nunca llegaban a guardarse.
+//
+// Fuera se quedan, a proposito: las partidas de arena y las entradas a
+// mazmorra en curso. La arena es una simulacion que corre a 100 ms atada
+// a sockets abiertos; al reiniciar esos sockets ya no existen, y revivir
+// la partida dejaria a los jugadores dentro de un combate que nadie
+// controla. Tampoco se guardan idempotency ni los contadores de rate
+// limit, que son cache de corta vida por definicion.
+function sesionesVivas() {
+  const t = now()
+  const vivas = {}
+  for (const [k, s] of Object.entries(store.sessions)) if (s && s.expiresAt > t) vivas[k] = s
+  return vivas
+}
+
 function snapshotOf() {
   return {
     version: 1,
     savedAt: new Date().toISOString(),
     players: store.players, emailIndex: store.emailIndex, nameIndex: store.nameIndex,
+    sessions: sesionesVivas(),
+    battles: store.battles,
+    chatMessages: store.chatMessages.slice(-200),
     marketListings: store.marketListings, marketTransactions: store.marketTransactions.slice(-2000),
     guilds: store.guilds, economy: store.economy, invites: store.invites,
     feedback: store.feedback,
@@ -20124,10 +20152,42 @@ function readSnapshotFile(file) {
   return d
 }
 
+// Al restaurar se vuelve a filtrar por fecha: un archivo puede llevar
+// dias parado, y entonces la mitad de lo que trae ya habria caducado.
+function sesionesGuardadas(raw) {
+  const t = now()
+  const vivas = {}
+  if (raw && typeof raw === 'object') {
+    for (const [k, s] of Object.entries(raw)) {
+      if (!s || typeof s !== 'object') continue
+      if (!s.username || !(s.expiresAt > t)) continue
+      vivas[k] = s
+    }
+  }
+  return vivas
+}
+function batallasGuardadas(raw) {
+  const t = now()
+  const vivas = {}
+  if (raw && typeof raw === 'object') {
+    // El mismo margen que usa sweepSessions: media hora sin tocarla y la
+    // batalla se da por abandonada.
+    for (const [k, b] of Object.entries(raw)) {
+      if (!b || typeof b !== 'object' || !b.owner) continue
+      if (!(b.updatedAt > t - 30 * 60 * 1000)) continue
+      vivas[k] = b
+    }
+  }
+  return vivas
+}
+
 function applySnapshot(d) {
   Object.assign(store, {
     players: d.players || {}, emailIndex: d.emailIndex || {},
     nameIndex: d.nameIndex || Object.fromEntries(Object.keys(d.players || {}).map(u => [u.toLowerCase(), u])),
+    sessions: sesionesGuardadas(d.sessions),
+    battles: batallasGuardadas(d.battles),
+    chatMessages: Array.isArray(d.chatMessages) ? d.chatMessages.slice(-200) : [],
     marketListings: d.marketListings || [], marketTransactions: d.marketTransactions || [],
     guilds: d.guilds || {}, economy: d.economy || store.economy,
     invites: d.invites || store.invites || {},
@@ -20192,6 +20252,9 @@ function genToken() { return crypto.randomBytes(32).toString('base64url') }
 function createSession(username) {
   const token = genToken()
   store.sessions[token] = { username, createdAt: now(), expiresAt: now() + SESSION_TTL_MS }
+  // Sin esto, entrar y que el servidor se reinicie en el minuto siguiente
+  // dejaba una cookie valida apuntando a un token que nunca se guardo.
+  persist()
   return token
 }
 // En producción la cookie lleva `Secure`, así que el navegador SOLO la
@@ -26056,7 +26119,7 @@ async function handleAPI(req, res, pathname, query) {
 
   if (pathname === '/api/auth/logout' && req.method === 'POST') {
     const token = getToken(req)
-    if (token) delete store.sessions[token]
+    if (token) { delete store.sessions[token]; persist() }
     return json(res, { success: true }, 200, { 'Set-Cookie': 'cm_token=; Path=/; Max-Age=0; HttpOnly; SameSite=Strict' })
   }
 

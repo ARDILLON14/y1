@@ -117,34 +117,47 @@ async function run() {
   let vioCrit = false, vioFallo = false, vioCombo = false, vioAviso = false, vioVeneno = false
   let turnos = 0, fin = null
   const traza = []
-  // Bloquear uno de cada SEIS turnos, no uno de cada cuatro.
+  // El jugador tiene que SOBREVIVIR para que haya combo que ver.
   //
-  // El combo sube encadenando golpes y se pone a cero al bloquear y al
-  // comerse el golpe anunciado del enemigo. Contra el Gólem —el bicho
-  // que elige esta prueba— el jugador de nivel 1 muere en 6 turnos, y
-  // midiendo la secuencia real sale siempre la misma:
+  // Este bucle bloquea uno de cada seis turnos y pega el resto. Antes
+  // entraba con un personaje de nivel 1 recién creado contra el Gólem,
+  // que lo mataba en cinco o seis turnos. Y el combo se pone a cero al
+  // bloquear, al fallar y al comerse el golpe anunciado, así que en un
+  // combate tan corto quedaba UNA sola ventana para verlo subir a 2.
+  // La traza del fallo real lo enseña bien:
   //
-  //     a1  a2  a0  B0  a1  a0        (a = ataque, B = bloqueo)
-  //          ^^      ^^
-  //          |       bloqueo: combo a cero
-  //          única ventana en la que el combo llega a 2
+  //     a1  a0  a1  ax0  a0        (a = ataque, x = fallo, B = bloqueo)
+  //          ^^        ^^
+  //          golpe anunciado       fallo del ataque
   //
-  // O sea que había UNA sola oportunidad de ver el combo en todo el
-  // combate, y un fallo del ataque —un 5% por golpe— la cerraba. Eso
-  // daba un 10% de ejecuciones en rojo por mala suerte, y con la suite
-  // encadenada con && se llevaba por delante a las que venían detrás.
+  // Bajar la frecuencia de bloqueo no arreglaba eso: seguía dependiendo
+  // de que ni el Gólem ni el dado estropearan la única ventana. Una
+  // prueba que observa algo que el servidor decide con un dado tiene que
+  // insistir hasta verlo con un presupuesto medido, no confiar en la
+  // suerte.
   //
-  // Bloqueando cada seis turnos quedan dos ventanas (i=1 e i=4), y hace
-  // falta mala suerte en las dos: baja del 10% a cerca del 1%. El
-  // combate dura lo mismo y se sigue bloqueando.
-  for (let i = 0; i < 26 && !fin; i++) {
-    const res = await accion({ battleId, action: i % 6 === 5 ? 'block' : 'attack' })
+  // Ahora el personaje lleva pociones y se cura cuando baja del 45 % de
+  // vida. Medido cuatro veces seguidas: el combate dura entre 33 y 39
+  // turnos, acaba SIEMPRE en victoria, el Gólem anuncia su golpe entre
+  // 10 y 12 veces, y el combo llega a 3 en las cuatro —de hecho en los
+  // tres primeros turnos, antes del primer aviso—. El presupuesto de 60
+  // turnos deja margen de sobra sobre los 39 peores.
+  //
+  // Beber una poción NO pone el combo a cero (solo lo hacen bloquear,
+  // fallar, curarse con `heal` y comerse el golpe anunciado), así que
+  // curarse no tapa lo que la prueba quiere observar.
+  await req('POST', '/api/dev/dar', { itemId: 'potion_hp_v', quantity: 30 })
+  for (let i = 0; i < 60 && !fin; i++) {
+    const yo = (await req('GET', '/api/player')).body.character || {}
+    const tocado = yo.maxHp > 0 && yo.hp < yo.maxHp * 0.45
+    const accionDelTurno = tocado ? 'objeto' : (i % 6 === 5 ? 'block' : 'attack')
+    const res = await accion({ battleId, action: accionDelTurno, itemId: tocado ? 'potion_hp_v' : undefined })
     if (res.status !== 200) break
     turnos++
     if (res.body.crit) vioCrit = true
     if (res.body.miss) vioFallo = true
     if ((res.body.combo || 0) >= 2) vioCombo = true
-    traza.push((i % 6 === 5 ? 'B' : 'a') + (res.body.miss ? 'x' : '') + (res.body.combo || 0))
+    traza.push((tocado ? 'P' : accionDelTurno === 'block' ? 'B' : 'a') + (res.body.miss ? 'x' : '') + (res.body.combo || 0))
     if (res.body.telegraph) vioAviso = true
     if ((res.body.guion || []).some(f => f.veneno)) vioVeneno = true
     if (res.body.enemyDied) fin = 'victoria'

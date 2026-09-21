@@ -19,6 +19,7 @@ Fecha: 2026-09-21 · Base auditada: commit de importación del zip `criptomundo-
 > - §2.3 la pestaña de PvP era una pantalla en blanco — **STEP 5**
 > - §3.2 el mundo no tenía multijugador — **STEP 6** (con límite dicho)
 > - §3.3 el PvP del servidor no tenía cliente — **STEP 5**
+> - §5.1 sesiones, batallas y chat se perdían al reiniciar — **STEP 7**
 
 Este documento es el resultado de la FASE 0. **No se ha modificado ni una
 línea de gameplay.** Todo lo que sigue está comprobado contra el código o
@@ -390,6 +391,16 @@ Es importante dejarlo escrito, porque la tentación de reescribir es real.
 ## 5. Otros hallazgos
 
 ### 5.1 Estado que se pierde al reiniciar el servidor
+
+> ✅ **Resuelto en el STEP 7.** `snapshotOf()` guarda ahora `sessions`
+> (podadas de las caducadas), `battles` y los últimos 200 mensajes de
+> chat, y `applySnapshot()` vuelve a filtrar al restaurar porque el
+> archivo puede llevar días parado. `createSession()` y el logout
+> disparan `persist()`, para que un login no se quede sin escribir.
+> Arena y mazmorras siguen fuera a propósito, con el motivo escrito en
+> el código. Lo cubre `test-sesiones-persisten.js`, que mata el
+> servidor de verdad y lo vuelve a arrancar.
+
 
 `snapshotOf()` (`10-infra.js:78`) no guarda:
 

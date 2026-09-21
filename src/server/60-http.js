@@ -161,7 +161,7 @@ async function handleAPI(req, res, pathname, query) {
 
   if (pathname === '/api/auth/logout' && req.method === 'POST') {
     const token = getToken(req)
-    if (token) delete store.sessions[token]
+    if (token) { delete store.sessions[token]; persist() }
     return json(res, { success: true }, 200, { 'Set-Cookie': 'cm_token=; Path=/; Max-Age=0; HttpOnly; SameSite=Strict' })
   }
 

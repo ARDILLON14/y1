@@ -4,6 +4,37 @@ Cada versión con lo que la motivó. Los detalles completos están en `docs/CAMB
 
 ## v32 (en curso) — El mundo deja de pelear consigo mismo
 
+### Reiniciar el servidor echaba a todos los jugadores
+
+La cookie de sesión dura siete días. El token que la valida vivía solo en
+memoria: `snapshotOf()` guardaba personajes, inventario, mercado y huerto,
+pero no `sessions`. Así que cada despliegue devolvía a todo el mundo a la
+pantalla de login.
+
+Lo peor es que el síntoma no se parece a la causa. El jugador ve "me ha
+cerrado la sesión sola" y no tiene forma de relacionarlo con un reinicio
+que no vio. Nadie abre un informe por eso; simplemente vuelve a entrar y
+le queda la sensación de que el juego pierde cosas.
+
+Con las batallas por turnos pasaba algo más raro todavía. El código ya
+preveía encontrarse partidas a medias guardadas de antes —hay un respaldo
+en `escalaDaño()` para batallas viejas sin ese campo— pero ninguna batalla
+llegaba a guardarse nunca. El respaldo defendía un caso imposible.
+
+Ahora se guardan sesiones, batallas y los últimos 200 mensajes de chat. Al
+restaurar se vuelve a filtrar por fecha, porque un archivo puede llevar
+días parado y la mitad de lo que trae ya estar caducado. Entrar y cerrar
+sesión escriben en disco en vez de esperar a que lo haga otra cosa.
+
+Fuera se quedan, dicho en el código: las partidas de arena, que son una
+simulación a 100 ms atada a sockets que al reiniciar ya no existen, y las
+entradas a mazmorra en curso. Revivirlas dejaría a los jugadores dentro de
+un combate que ya no controla nadie.
+
+`test-sesiones-persisten.js` no simula el reinicio: mata el proceso del
+servidor y lo vuelve a arrancar con el mismo archivo de datos.
+
+
 ### Una prueba que se callaba en vez de fallar
 
 `test-contenido.js` dio 24 comprobaciones donde el día anterior daba 25.
