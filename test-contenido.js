@@ -78,15 +78,34 @@ async function run() {
   check('el coto de caza da cuero', (await buscar('leather')) !== undefined)
 
   console.log('\n── LAS POCIONES HACEN EFECTO ──')
-  // Nivel 3 para las pociones con efecto
-  let nivel = 1
-  for (let i = 0; i < 80 && nivel < 3; i++) {
+  // Nivel 3 para las pociones con efecto.
+  //
+  // El presupuesto de golpes depende de lo que dure una pelea, y 80 se
+  // quedó corto con el rebalanceo de la v31. Medido contra el servidor,
+  // tres veces seguidas:
+  //
+  //     47 ataques ·  6 arañas ·  6 muertes
+  //     77 ataques ·  6 arañas · 13 muertes
+  //    110 ataques ·  6 arañas · 21 muertes
+  //
+  // Siempre las mismas seis arañas —la experiencia no varía—, pero
+  // entre 6 y 21 muertes del jugador por el camino, y cada muerte tira
+  // los golpes de esa pelea. Con el tope en 80, una de cada tres
+  // ejecuciones se quedaba corta sin que hubiera nada roto. Es el mismo
+  // caso que ya documenta test-concurrencia.js, que por lo mismo subió
+  // el suyo de 120 a 300.
+  //
+  // Lo que esta sección mide es que las pociones con efecto funcionen;
+  // el grindeo solo es el peaje para llegar a poder beberlas.
+  let nivel = 1, golpes = 0, muertes = 0
+  for (let i = 0; i < 250 && nivel < 3; i++) {
     const c = await req('POST', '/api/combat/action', { monsterId: 'm_spider', action: 'attack' })
+    golpes++
     if (c.body.newLevel) nivel = c.body.newLevel
-    if (c.body.playerDied) await req('POST', '/api/player/respawn', {})
+    if (c.body.playerDied) { muertes++; await req('POST', '/api/player/respawn', {}) }
     await sleep(370)
   }
-  check('se llega a nivel 3', nivel >= 3, `nivel ${nivel}`)
+  check('se llega a nivel 3', nivel >= 3, `nivel ${nivel} tras ${golpes} golpes y ${muertes} muertes`)
 
   await req('POST', '/api/gather', { nodoId: 'rio' })
   await req('POST', '/api/gather', { nodoId: 'colmena' })

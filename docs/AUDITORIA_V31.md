@@ -81,8 +81,23 @@ La causa raíz no es la prueba, es que el rebalanceo de la v31
 reajustó el presupuesto. El mecanismo de progreso de misión en sí funciona
 correctamente: el contador sube con el botín real.
 
-De paso, esos 13 muertes para completar la primera misión de recolección
-son un dato de balance por derecho propio, no solo un problema de la prueba.
+De paso, esas 13 muertes para completar la primera misión de recolección
+son un dato de balance por derecho propio, no solo un problema de la
+prueba. Midiendo después el camino a nivel 3, salió lo mismo y peor:
+
+```
+ 47 ataques ·  6 arañas ·  6 muertes
+ 77 ataques ·  6 arañas · 13 muertes
+110 ataques ·  6 arañas · 21 muertes
+```
+
+Un jugador de nivel 1 muere entre una y tres veces y media POR CADA
+araña que mata. Las seis arañas son siempre las mismas porque la
+experiencia no varía; lo que varía —muchísimo— es cuántas veces te matan
+mientras tanto. Eso no es dificultad, es ruido: el resultado de la misma
+acción cambia por un factor de tres según la suerte. Es el hallazgo de
+balance más claro de toda la auditoría y va al paso de progresión y
+economía.
 
 ---
 
