@@ -17,6 +17,7 @@ Fecha: 2026-09-21 · Base auditada: commit de importación del zip `criptomundo-
 > - §5.2 el golpe de la arena no tenía ventanas — **STEP 3** (a medias)
 > - §2.2 el +HP del equipo no contaba en los turnos — **STEP 4**
 > - §2.3 la pestaña de PvP era una pantalla en blanco — **STEP 5**
+> - §3.2 el mundo no tenía multijugador — **STEP 6** (con límite dicho)
 > - §3.3 el PvP del servidor no tenía cliente — **STEP 5**
 
 Este documento es el resultado de la FASE 0. **No se ha modificado ni una
@@ -283,6 +284,23 @@ que los nodos son instanciados. Dos jugadores no compiten por el mismo
 FASE 8.
 
 ### 3.2 No hay multiplayer
+
+> ✅ **Resuelto en el STEP 6, con un límite dicho.** El servidor lleva
+> la posición de cada jugador y se la cuenta a los de su zona, diez
+> veces por segundo, por socket o por HTTP. Se ven el nombre, el nivel,
+> el aspecto, la dirección y el arma, con interpolación en el cliente.
+>
+> El servidor **acepta o corrige**, no simula: comprueba que la
+> coordenada cae dentro del mundo y que el salto es humanamente
+> posible, pero no lleva las colisiones con los edificios. Un cliente
+> modificado todavía puede andar a la velocidad máxima en línea recta;
+> lo que ya no puede es teletransportarse. Simular el movimiento entero
+> obligaría a portar las colisiones del mapa al servidor, y eso es otro
+> trabajo.
+>
+> De paso cierra la advertencia que quedaba en §3.1: la recolección ya
+> no se cree la posición que mande el cliente, porque el servidor la
+> sabe. Lo cubre `test-mundo-multijugador.js`.
 
 `src/server/55-tiempo-real.js` tiene un WebSocket escrito a mano, sólido y
 probado (`test-socket-fugas.js`, 10 en verde). Pero lo único que transporta

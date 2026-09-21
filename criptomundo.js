@@ -3314,6 +3314,9 @@ class WorldScene extends Phaser.Scene {
     // su reloj. Los pide el servidor, que es quien sabe cuáles siguen
     // en pie para ESTE jugador.
     if (typeof cargarRecursos === 'function') cargarRecursos(this)
+    // Los vecinos de la zona anterior no están aquí: se borran y el
+    // siguiente pulso traerá los de esta.
+    if (typeof mundoLimpiar === 'function') mundoLimpiar()
 
     // Ambient particles for zone
     if (zoneKey === 'ruinas') this.startAmbientParticles(0xA335EE)
@@ -3368,6 +3371,10 @@ class WorldScene extends Phaser.Scene {
 
     // Normalize diagonal
     if (dx !== 0 && dy !== 0) { dx *= 0.707; dy *= 0.707 }
+
+    // Si el personaje se está moviendo. Lo necesita el mundo compartido
+    // para decirles a los demás si andas o estás parado.
+    this.andando = (dx !== 0 || dy !== 0)
 
     // Límites del mundo, no de la pantalla
     const margin = 24
@@ -3459,6 +3466,11 @@ class WorldScene extends Phaser.Scene {
 
     // Recursos: qué árbol o veta tienes delante
     if (typeof actualizarRecursos === 'function') actualizarRecursos(this)
+
+    // El mundo compartido: contar dónde estás y llevar a los demás
+    // hacia donde el servidor dice que van.
+    if (typeof mundoPulso === 'function') mundoPulso()
+    if (typeof mundoInterpolar === 'function') mundoInterpolar(this)
 
     // NPC proximity
     this.npcData.forEach((npc, i) => {
@@ -4797,6 +4809,189 @@ function astillas(escena, g) {
     })
   }
 }
+</script>`
+
+// Los otros jugadores, en el mundo.
+//
+// QUÉ HABÍA
+// Nada. El mundo 2D era estrictamente de un jugador: dos personas en el
+// mismo bosque no se veían, no se cruzaban y no sabían la una de la
+// otra. El WebSocket llevaba chat y "presencia", que era literalmente
+// una lista de nombres y niveles, sin una sola coordenada.
+//
+// QUÉ HACE ESTO
+// Manda dónde estás diez veces por segundo y dibuja a quien tengas en
+// la misma zona: su nombre, su nivel, su aspecto, hacia dónde mira y
+// qué arma lleva.
+//
+// LOS DOS CAMINOS
+// Por socket si hay socket, y por HTTP si no. No es paranoia: la v29 y
+// la v30 se fueron en diagnosticar "entro y no me puedo mover" y el
+// problema estaba fuera del código —un antivirus, un proxy, una
+// extensión— y no se arreglaba desde aquí. La arena ya tenía el pulso
+// por HTTP; el mundo lo necesita por lo mismo.
+//
+// LA INTERPOLACIÓN, Y POR QUÉ
+// Llegan diez posiciones por segundo y se dibuja a sesenta. Poniendo a
+// cada uno donde diga el último paquete, los demás avanzan a tirones de
+// diez por segundo. Aquí cada jugador guarda a dónde va y se le lleva
+// suavemente, así que se mueven como se mueven las cosas y no como una
+// presentación de diapositivas.
+PAGES['criptomundo-mundo2d.html'] += `<script>
+
+var OTROS = {}            // usuario → { dibujo, objetivo, datos }
+var MUNDO_SOCK = null
+var MUNDO_ULT = 0
+var MUNDO_ESPACIO = { ancho: 1800, alto: 1200 }
+var MUNDO_CORREGIDO = 0
+
+// Cada cuánto se le cuenta al servidor dónde estás. Diez por segundo es
+// lo mismo que usa la arena: suficiente para que se vea fluido con
+// interpolación y poco para la red.
+var MUNDO_PULSO_MS = 100
+
+function mundoAbrirSocket() {
+  if (MUNDO_SOCK || typeof WebSocket === 'undefined') return
+  try {
+    var proto = location.protocol === 'https:' ? 'wss://' : 'ws://'
+    MUNDO_SOCK = new WebSocket(proto + location.host + '/ws')
+    MUNDO_SOCK.onmessage = function (ev) {
+      var m = null
+      try { m = JSON.parse(ev.data) } catch (e) { return }
+      if (m && m.type === 'mundo') mundoRecibir(m)
+    }
+    MUNDO_SOCK.onclose = function () { MUNDO_SOCK = null }
+    MUNDO_SOCK.onerror = function () { MUNDO_SOCK = null }
+  } catch (e) { MUNDO_SOCK = null }
+}
+
+// El servidor contesta con dónde estás DE VERDAD y con quién tienes al
+// lado. Si corrigió tu posición, se te recoloca: es la señal de que el
+// salto no le pareció humano.
+function mundoRecibir(m) {
+  if (m.tu && m.tu.corregido && gameScene) {
+    MUNDO_CORREGIDO++
+    gameScene.px = m.tu.x * (gameScene.MW / MUNDO_ESPACIO.ancho)
+    gameScene.py = m.tu.y * (gameScene.MH / MUNDO_ESPACIO.alto)
+    if (gameScene.playerText) gameScene.playerText.setPosition(gameScene.px, gameScene.py)
+  }
+  mundoPintarVecinos(m.vecinos || [])
+}
+
+async function mundoPulso() {
+  if (!gameScene || typeof gameScene.px !== 'number') return
+  var ahora = Date.now()
+  if (ahora - MUNDO_ULT < MUNDO_PULSO_MS) return
+  MUNDO_ULT = ahora
+
+  var pos = {
+    zona: currentZone,
+    x: gameScene.px / (gameScene.MW / MUNDO_ESPACIO.ancho),
+    y: gameScene.py / (gameScene.MH / MUNDO_ESPACIO.alto),
+    dir: gameScene.lastDir === 'left' ? Math.PI : gameScene.lastDir === 'up' ? -Math.PI / 2
+       : gameScene.lastDir === 'down' ? Math.PI / 2 : 0,
+    anim: gameScene.andando ? 'walk' : 'idle',
+  }
+
+  if (MUNDO_SOCK && MUNDO_SOCK.readyState === 1) {
+    try { MUNDO_SOCK.send(JSON.stringify({ type: 'mundo_entrada', pos: pos })); return }
+    catch (e) { MUNDO_SOCK = null }
+  }
+  // Sin socket, por HTTP. Mismo servidor decidiendo lo mismo.
+  var r = await apiPost('/api/mundo/sync', { pos: pos })
+  if (r.ok) mundoRecibir(r.data)
+}
+
+// Dibujar a los demás. Lo único que decide esta pantalla es el dibujo:
+// dónde están lo dice el servidor.
+function mundoPintarVecinos(lista) {
+  if (!gameScene || !gameScene.add) return
+  var escalaX = gameScene.MW / MUNDO_ESPACIO.ancho
+  var escalaY = gameScene.MH / MUNDO_ESPACIO.alto
+  var vistos = {}
+
+  lista.forEach(function (v) {
+    vistos[v.usuario] = true
+    var o = OTROS[v.usuario]
+    var x = v.x * escalaX, y = v.y * escalaY
+
+    if (!o) {
+      var emoji = (v.aspecto && v.aspecto.emoji) || '🧝'
+      o = {
+        sombra: gameScene.add.ellipse(x, y + 14, 26, 9, 0x000000, 0.3).setDepth(6),
+        cuerpo: gameScene.add.text(x, y, emoji, { fontSize: '24px', resolution: 2 })
+          .setOrigin(0.5).setDepth(7),
+        etiqueta: gameScene.add.text(x, y - 22, v.nombre + ' Nv.' + v.nivel, {
+          fontFamily: 'Cinzel', fontSize: '9px', color: '#8BB8F8',
+          stroke: '#05070A', strokeThickness: 2, resolution: 2,
+        }).setOrigin(0.5).setDepth(8),
+        arma: gameScene.add.text(x + 14, y + 2, (v.arma && v.arma.icono) || '', {
+          fontSize: '12px', resolution: 2,
+        }).setOrigin(0.5).setDepth(7),
+        x: x, y: y, destinoX: x, destinoY: y,
+      }
+      OTROS[v.usuario] = o
+      addLog('👋 ' + v.nombre + ' anda por aquí.', 'system')
+    }
+    // No se le planta en el sitio: se le apunta a dónde va y el bucle
+    // lo lleva. Si no, los demás avanzan a diez tirones por segundo.
+    o.destinoX = x
+    o.destinoY = y
+    o.etiqueta.setText(v.nombre + ' Nv.' + v.nivel)
+    o.arma.setText((v.arma && v.arma.icono) || '')
+    o.cuerpo.setText((v.aspecto && v.aspecto.emoji) || '🧝')
+  })
+
+  // Quien ya no está en la lista se ha ido de la zona o del juego.
+  Object.keys(OTROS).forEach(function (u) {
+    if (vistos[u]) return
+    mundoQuitar(u)
+  })
+}
+
+function mundoQuitar(u) {
+  var o = OTROS[u]
+  if (!o) return
+  ;['sombra', 'cuerpo', 'etiqueta', 'arma'].forEach(function (k) {
+    if (o[k]) { try { o[k].destroy() } catch (e) {} }
+  })
+  delete OTROS[u]
+}
+
+function mundoLimpiar() {
+  Object.keys(OTROS).forEach(mundoQuitar)
+}
+
+// La interpolación propiamente dicha. Se llama desde el bucle del
+// mundo, que va a sesenta por segundo.
+function mundoInterpolar(escena) {
+  var k = Math.min(1, (escena.game.loop.delta / 1000) * 12)
+  Object.keys(OTROS).forEach(function (u) {
+    var o = OTROS[u]
+    o.x += (o.destinoX - o.x) * k
+    o.y += (o.destinoY - o.y) * k
+    o.cuerpo.setPosition(o.x, o.y)
+    o.sombra.setPosition(o.x, o.y + 14)
+    o.etiqueta.setPosition(o.x, o.y - 22)
+    o.arma.setPosition(o.x + 14, o.y + 2)
+  })
+}
+
+// Abrir el socket en cuanto la pantalla esté viva. Si no se puede, el
+// pulso se va solo por HTTP: no hay nada que decidir aquí.
+window.addEventListener('load', function () { setTimeout(mundoAbrirSocket, 400) })
+
+// Al cerrar la pestaña, desaparecer del mundo de los demás en vez de
+// quedarse de pie hasta que caduque.
+window.addEventListener('beforeunload', function () {
+  try {
+    if (MUNDO_SOCK && MUNDO_SOCK.readyState === 1) {
+      MUNDO_SOCK.send(JSON.stringify({ type: 'mundo_salir' }))
+    } else if (navigator.sendBeacon) {
+      navigator.sendBeacon('/api/mundo/salir', new Blob(['{}'], { type: 'application/json' }))
+    }
+  } catch (e) {}
+})
 </script>`
 
 PAGES['criptomundo-combat.html'] = `<!DOCTYPE html>
@@ -22699,17 +22894,22 @@ function listarRecursos(char, zona) {
 // El golpe: una petición, un golpe. Lo único que el cliente puede pedir
 // es "golpeo este nodo, y estoy aquí". Todo lo demás se decide aquí.
 //
-// SOBRE LA POSICIÓN QUE MANDA EL CLIENTE
-// La zona sí es autoritativa: la guarda el servidor y la cambia
+// SOBRE LA POSICIÓN
+// La zona es autoritativa: la guarda el servidor y la cambia
 // /api/world/explore, así que "estar en el bosque" no se puede fingir.
-// Las coordenadas dentro de la zona NO lo son todavía, porque el mundo
-// no simula el movimiento en el servidor —eso es la fase de multijugador
-// (§3.2 de la auditoría)—. O sea que este control hace que el juego
-// funcione como debe: hay que andar hasta el árbol para talarlo. No
-// impide que alguien con la consola abierta mienta sobre dónde está.
-// Cuando el servidor lleve la posición de verdad, esta función cambia
-// en una línea: la posición se lee del mundo en vez del cuerpo.
-function golpearRecurso(char, nodoId, posicion) {
+//
+// Y las coordenadas ya tampoco salen del cuerpo de la petición cuando
+// el servidor sabe dónde estás. El mundo compartido lleva la posición
+// de cada jugador y la corrige si el salto no es humanamente posible
+// (54-mundo-vivo.js), así que aquí se pregunta ahí primero y lo que
+// mande el cliente se ignora. Esto era la advertencia que quedó abierta
+// al escribir esta función: ya no hace falta.
+//
+// El respaldo sigue existiendo para quien todavía no se haya situado en
+// el mundo —acaba de entrar, o juega solo por HTTP sin pulsar el
+// mundo—: en ese caso vale la posición que mande, como antes. Peor que
+// preguntarle al mundo, mejor que no comprobar nada.
+function golpearRecurso(char, nodoId, posicion, usuario) {
   const n = NODOS_RECURSO[nodoId]
   if (!n) return { error: 'Ahí no hay nada que golpear', code: 404 }
 
@@ -22724,10 +22924,13 @@ function golpearRecurso(char, nodoId, posicion) {
     return { error: `Eso está en ${ZONES[n.zona].name} y tú no`, code: 403 }
   }
 
-  // La posición es obligatoria. Si fuera opcional, no mandarla sería la
-  // forma trivial de saltarse el control, y un control que se esquiva
-  // omitiendo un campo es peor que no tenerlo: engaña a quien lo lee.
-  const px = Number(posicion && posicion.x), py = Number(posicion && posicion.y)
+  // La que sabe el servidor manda. Solo si no sabe nada de ti se mira
+  // la que mandas tú, y entonces es obligatoria: si fuera opcional, no
+  // mandarla sería la forma trivial de saltarse el control, y un
+  // control que se esquiva omitiendo un campo es peor que no tenerlo.
+  const sabida = typeof posicionDe === 'function' && usuario ? posicionDe(usuario) : null
+  const fuente = sabida && sabida.zona === n.zona ? sabida : posicion
+  const px = Number(fuente && fuente.x), py = Number(fuente && fuente.y)
   if (!Number.isFinite(px) || !Number.isFinite(py)) {
     return { error: 'Falta decir dónde estás', code: 400 }
   }
@@ -23168,6 +23371,178 @@ function publicEconomyReport() {
   }
 }
 
+// ═══════════════════════════════════════════════════════════════════
+//  EL MUNDO COMPARTIDO — dónde está cada jugador
+//
+//  QUÉ HABÍA
+//  Nada. El WebSocket llevaba chat, presencia y las entradas de la
+//  arena, y presencia era literalmente una lista de nombres y niveles.
+//  Ni una coordenada. El mundo 2D era estrictamente de un jugador: dos
+//  personas en el mismo bosque no se veían, no se cruzaban y no sabían
+//  la una de la otra.
+//
+//  QUÉ HAY AHORA
+//  El servidor lleva la posición de cada jugador y se la cuenta a los
+//  que están en su misma zona. Diez veces por segundo, como la arena.
+//
+//  HASTA DÓNDE MANDA EL SERVIDOR, DICHO CLARO
+//  El cliente propone la posición y el servidor la ACEPTA O LA CORRIGE.
+//  No simula el movimiento —eso obligaría a portar al servidor las
+//  colisiones con los edificios del mapa, que es otro trabajo—, pero sí
+//  comprueba lo que se puede comprobar sin simular:
+//
+//    · que la coordenada es un número y cae dentro del mundo
+//    · que la zona es una de verdad
+//    · que NO te has movido más rápido de lo humanamente posible
+//
+//  Ese último control es el que importa. Si alguien manda un salto de
+//  600 px de golpe, el servidor no lo guarda: devuelve la última
+//  posición buena y el cliente se recoloca. No es lo mismo que simular,
+//  y no lo vendo como tal: un cliente modificado todavía puede moverse
+//  a la velocidad máxima en línea recta. Lo que ya no puede es
+//  teletransportarse, que era lo que dejaba sin sentido la comprobación
+//  de distancia de la recolección.
+//
+//  Y ESO ARREGLA OTRA COSA
+//  golpearRecurso() pedía al cliente que dijera dónde estaba. Ahora el
+//  servidor lo sabe, así que la comprobación de distancia deja de
+//  fiarse de lo que le cuenten.
+// ═══════════════════════════════════════════════════════════════════
+
+// El mismo espacio que declaran los nodos de recurso: un solo mundo,
+// unas solas coordenadas.
+const MUNDO_ANCHO = MUNDO_RECURSOS.ancho
+const MUNDO_ALTO = MUNDO_RECURSOS.alto
+
+// Velocidad máxima admitida, en píxeles por segundo. El personaje anda
+// a 210 en la arena y la agilidad lo sube hasta un 45%; aquí se deja un
+// margen generoso porque un navegador que se congela medio segundo y
+// vuelve manda un salto legítimo grande.
+const MUNDO_VEL_MAX = 210 * 1.45
+const MUNDO_MARGEN = 2.5        // cuánto se perdona por encima del tope
+const MUNDO_SALTO_LIBRE = 90    // saltos cortos que no vale la pena pelear
+
+// Cuánto se guarda a alguien que se calla. Si no manda nada en este
+// tiempo, desaparece del mundo de los demás: es lo que evita que quede
+// un muñeco clavado en mitad del pueblo.
+const MUNDO_OLVIDO_MS = 8000
+
+const mundo = new Map()   // username → { zona, x, y, dir, anim, visto, ultimoMov }
+
+function zonaValida(z) {
+  const c = zonaCanonica(z)
+  return c && ZONES[c] ? c : null
+}
+
+// Lo que ve el resto de la gente. Deliberadamente corto: nombre, nivel,
+// dónde está, hacia dónde mira y qué lleva puesto. Nada de inventario,
+// oro ni misiones, que no son asunto de quien pasa por al lado.
+function retratoDe(username, e) {
+  const p = store.players[username]
+  if (!p) return null
+  const char = p.character
+  const arma = typeof armaDe === 'function' ? armaDe(char) : null
+  return {
+    usuario: username,
+    nombre: char.name,
+    nivel: char.level,
+    clase: char.class,
+    x: Math.round(e.x), y: Math.round(e.y),
+    dir: e.dir || 0,
+    anim: e.anim || 'idle',
+    aspecto: typeof aspectoDe === 'function' ? aspectoDe(char) : null,
+    arma: arma ? { id: arma.id, nombre: arma.nombre, icono: arma.icono, imagen: arma.imagen } : null,
+  }
+}
+
+// Dónde está alguien AHORA, según el servidor. Lo usa la recolección
+// para no tener que creerse la posición que mande el cliente.
+function posicionDe(username) {
+  const e = mundo.get(username)
+  if (!e) return null
+  if (now() - e.visto > MUNDO_OLVIDO_MS) return null
+  return { zona: e.zona, x: e.x, y: e.y }
+}
+
+// El cliente propone; aquí se acepta o se corrige.
+//
+// Devuelve siempre la posición BUENA: si la propuesta valía, es la
+// suya; si no, la anterior. El cliente se recoloca con lo que reciba,
+// así que un salto rechazado se ve como un tirón hacia atrás y no como
+// un movimiento que no pasa nada.
+function moverEnMundo(username, datos) {
+  const p = store.players[username]
+  if (!p) return null
+  const char = p.character
+  const zona = zonaValida(datos && datos.zona) || zonaCanonica(char.zonaActual || 'pueblo')
+  if (!zona) return null
+
+  const t = now()
+  const previo = mundo.get(username)
+  const x = Number(datos && datos.x)
+  const y = Number(datos && datos.y)
+
+  let nx, ny, corregido = false
+  if (!Number.isFinite(x) || !Number.isFinite(y)) {
+    nx = previo ? previo.x : MUNDO_ANCHO / 2
+    ny = previo ? previo.y : MUNDO_ALTO / 2
+    corregido = !!previo
+  } else {
+    nx = limitarMundo(x, 0, MUNDO_ANCHO)
+    ny = limitarMundo(y, 0, MUNDO_ALTO)
+    if (nx !== x || ny !== y) corregido = true
+  }
+
+  // El control de velocidad. Solo aplica si seguimos en la misma zona:
+  // cambiar de zona es un salto legítimo, porque el mapa entero cambia.
+  if (previo && previo.zona === zona) {
+    const dt = Math.max(0.016, (t - (previo.ultimoMov || t)) / 1000)
+    const recorrido = Math.hypot(nx - previo.x, ny - previo.y)
+    const tope = Math.max(MUNDO_SALTO_LIBRE, MUNDO_VEL_MAX * MUNDO_MARGEN * dt)
+    if (recorrido > tope) {
+      nx = previo.x; ny = previo.y
+      corregido = true
+    }
+  }
+
+  const e = {
+    zona, x: nx, y: ny,
+    dir: Number.isFinite(Number(datos && datos.dir)) ? Number(datos.dir) : (previo ? previo.dir : 0),
+    anim: typeof (datos && datos.anim) === 'string' ? String(datos.anim).slice(0, 12) : 'idle',
+    visto: t,
+    ultimoMov: t,
+  }
+  mundo.set(username, e)
+  return { x: e.x, y: e.y, zona, corregido }
+}
+
+function limitarMundo(v, min, max) { return v < min ? min : v > max ? max : v }
+
+// Quiénes están en la misma zona, sin contarte a ti.
+function vecinosDe(username) {
+  const yo = mundo.get(username)
+  if (!yo) return []
+  const t = now()
+  const fuera = []
+  for (const [otro, e] of mundo) {
+    if (otro === username) continue
+    if (e.zona !== yo.zona) continue
+    if (t - e.visto > MUNDO_OLVIDO_MS) continue
+    const r = retratoDe(otro, e)
+    if (r) fuera.push(r)
+  }
+  return fuera
+}
+
+function salirDelMundo(username) { mundo.delete(username) }
+
+// Limpieza de los que se fueron sin avisar. Sin esto, cerrar la pestaña
+// dejaba tu muñeco de pie en el pueblo para siempre.
+setInterval(() => {
+  const t = now()
+  for (const [u, e] of mundo) if (t - e.visto > MUNDO_OLVIDO_MS) mundo.delete(u)
+}, 4000).unref?.()
+
 
 // ═══════════════════════════════════════════════════════════════════
 //  TIEMPO REAL — WebSocket implementado a mano
@@ -23249,6 +23624,9 @@ function wsBroadcast(obj, filter) {
 function wsDrop(client) {
   if (!wsClients.has(client)) return
   wsClients.delete(client)
+  // Al cerrar la pestaña, el muñeco desaparece del mundo de los demás.
+  // Sin esto quedaba de pie en mitad del pueblo hasta que caducara.
+  if (client.username && typeof salirDelMundo === 'function') salirDelMundo(client.username)
   try { client.socket.destroy() } catch {}
   wsBroadcast({ type: 'presence', online: wsOnline() })
 }
@@ -23301,6 +23679,17 @@ function wsHandleMessage(client, raw) {
   if (!msg || typeof msg !== 'object') return
 
   if (msg.type === 'ping') { wsSend(client, { type: 'pong' }); return }
+
+  // Dónde está el jugador en el mundo. El servidor acepta o corrige, y
+  // contesta con quién tiene al lado. Es un pulso del cliente, no un
+  // reloj aparte: así quien no se mueve no genera tráfico.
+  if (msg.type === 'mundo_entrada') {
+    const r = moverEnMundo(client.username, msg.pos || {})
+    if (!r) return
+    wsSend(client, { type: 'mundo', tu: r, vecinos: vecinosDe(client.username) })
+    return
+  }
+  if (msg.type === 'mundo_salir') { salirDelMundo(client.username); return }
 
   // Entradas del combate en tiempo real. Se sanean en entradaArena().
   if (msg.type === 'arena_entrada') { entradaArena(client.username, msg.entrada || {}); return }
@@ -26079,6 +26468,22 @@ async function handleAPI(req, res, pathname, query) {
   }
   // ══════════ RECURSOS DEL MUNDO (talar / picar) ══════════
   // El huerto de más abajo sigue igual: esto va en paralelo (§7).
+  // ══════════ MUNDO COMPARTIDO ══════════
+  //
+  // El mismo pulso que va por socket, por HTTP. La lección de la v29 y
+  // la v30 fue que el WebSocket a veces no llega —un antivirus, un
+  // proxy, una extensión— y que el juego no puede depender de él. La
+  // arena ya tenía este camino; el mundo lo necesita por lo mismo.
+  if (pathname === '/api/mundo/sync' && req.method === 'POST') {
+    const r = moverEnMundo(p.username, body.pos || {})
+    if (!r) return fail(res, 'No se pudo situar en el mundo', 400)
+    return json(res, { tu: r, vecinos: vecinosDe(p.username) })
+  }
+  if (pathname === '/api/mundo/salir' && req.method === 'POST') {
+    salirDelMundo(p.username)
+    return json(res, { success: true })
+  }
+
   if (pathname === '/api/recursos' && req.method === 'GET') {
     return json(res, {
       // El espacio de coordenadas viaja con la lista: quien dibuje los
@@ -26105,7 +26510,7 @@ async function handleAPI(req, res, pathname, query) {
   if (pathname === '/api/recursos/golpear' && req.method === 'POST') {
     // Un golpe por petición. El límite corta el clic automático.
     if (!rateLimit('golpe:' + char.id, 180, 60_000)) return fail(res, 'Demasiado rápido', 429)
-    const r = golpearRecurso(char, body.nodoId, body.pos)
+    const r = golpearRecurso(char, body.nodoId, body.pos, p.username)
     if (r.error) return fail(res, r.error, r.code)
     return reply(r)
   }

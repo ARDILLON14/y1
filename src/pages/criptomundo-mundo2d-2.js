@@ -565,6 +565,9 @@ class WorldScene extends Phaser.Scene {
     // su reloj. Los pide el servidor, que es quien sabe cuáles siguen
     // en pie para ESTE jugador.
     if (typeof cargarRecursos === 'function') cargarRecursos(this)
+    // Los vecinos de la zona anterior no están aquí: se borran y el
+    // siguiente pulso traerá los de esta.
+    if (typeof mundoLimpiar === 'function') mundoLimpiar()
 
     // Ambient particles for zone
     if (zoneKey === 'ruinas') this.startAmbientParticles(0xA335EE)
@@ -619,6 +622,10 @@ class WorldScene extends Phaser.Scene {
 
     // Normalize diagonal
     if (dx !== 0 && dy !== 0) { dx *= 0.707; dy *= 0.707 }
+
+    // Si el personaje se está moviendo. Lo necesita el mundo compartido
+    // para decirles a los demás si andas o estás parado.
+    this.andando = (dx !== 0 || dy !== 0)
 
     // Límites del mundo, no de la pantalla
     const margin = 24
@@ -710,6 +717,11 @@ class WorldScene extends Phaser.Scene {
 
     // Recursos: qué árbol o veta tienes delante
     if (typeof actualizarRecursos === 'function') actualizarRecursos(this)
+
+    // El mundo compartido: contar dónde estás y llevar a los demás
+    // hacia donde el servidor dice que van.
+    if (typeof mundoPulso === 'function') mundoPulso()
+    if (typeof mundoInterpolar === 'function') mundoInterpolar(this)
 
     // NPC proximity
     this.npcData.forEach((npc, i) => {

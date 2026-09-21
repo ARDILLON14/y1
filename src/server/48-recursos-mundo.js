@@ -284,17 +284,22 @@ function listarRecursos(char, zona) {
 // El golpe: una petición, un golpe. Lo único que el cliente puede pedir
 // es "golpeo este nodo, y estoy aquí". Todo lo demás se decide aquí.
 //
-// SOBRE LA POSICIÓN QUE MANDA EL CLIENTE
-// La zona sí es autoritativa: la guarda el servidor y la cambia
+// SOBRE LA POSICIÓN
+// La zona es autoritativa: la guarda el servidor y la cambia
 // /api/world/explore, así que "estar en el bosque" no se puede fingir.
-// Las coordenadas dentro de la zona NO lo son todavía, porque el mundo
-// no simula el movimiento en el servidor —eso es la fase de multijugador
-// (§3.2 de la auditoría)—. O sea que este control hace que el juego
-// funcione como debe: hay que andar hasta el árbol para talarlo. No
-// impide que alguien con la consola abierta mienta sobre dónde está.
-// Cuando el servidor lleve la posición de verdad, esta función cambia
-// en una línea: la posición se lee del mundo en vez del cuerpo.
-function golpearRecurso(char, nodoId, posicion) {
+//
+// Y las coordenadas ya tampoco salen del cuerpo de la petición cuando
+// el servidor sabe dónde estás. El mundo compartido lleva la posición
+// de cada jugador y la corrige si el salto no es humanamente posible
+// (54-mundo-vivo.js), así que aquí se pregunta ahí primero y lo que
+// mande el cliente se ignora. Esto era la advertencia que quedó abierta
+// al escribir esta función: ya no hace falta.
+//
+// El respaldo sigue existiendo para quien todavía no se haya situado en
+// el mundo —acaba de entrar, o juega solo por HTTP sin pulsar el
+// mundo—: en ese caso vale la posición que mande, como antes. Peor que
+// preguntarle al mundo, mejor que no comprobar nada.
+function golpearRecurso(char, nodoId, posicion, usuario) {
   const n = NODOS_RECURSO[nodoId]
   if (!n) return { error: 'Ahí no hay nada que golpear', code: 404 }
 
@@ -309,10 +314,13 @@ function golpearRecurso(char, nodoId, posicion) {
     return { error: `Eso está en ${ZONES[n.zona].name} y tú no`, code: 403 }
   }
 
-  // La posición es obligatoria. Si fuera opcional, no mandarla sería la
-  // forma trivial de saltarse el control, y un control que se esquiva
-  // omitiendo un campo es peor que no tenerlo: engaña a quien lo lee.
-  const px = Number(posicion && posicion.x), py = Number(posicion && posicion.y)
+  // La que sabe el servidor manda. Solo si no sabe nada de ti se mira
+  // la que mandas tú, y entonces es obligatoria: si fuera opcional, no
+  // mandarla sería la forma trivial de saltarse el control, y un
+  // control que se esquiva omitiendo un campo es peor que no tenerlo.
+  const sabida = typeof posicionDe === 'function' && usuario ? posicionDe(usuario) : null
+  const fuente = sabida && sabida.zona === n.zona ? sabida : posicion
+  const px = Number(fuente && fuente.x), py = Number(fuente && fuente.y)
   if (!Number.isFinite(px) || !Number.isFinite(py)) {
     return { error: 'Falta decir dónde estás', code: 400 }
   }

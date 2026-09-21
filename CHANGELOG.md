@@ -4,6 +4,40 @@ Cada versión con lo que la motivó. Los detalles completos están en `docs/CAMB
 
 ## v32 (en curso) — El mundo deja de pelear consigo mismo
 
+### El mundo deja de ser de un jugador
+
+El mundo 2D era estrictamente de una persona. Dos jugadores en el mismo
+bosque no se veían, no se cruzaban y no sabían el uno del otro. El
+WebSocket llevaba chat, "presencia" —que era literalmente una lista de
+nombres y niveles, sin una sola coordenada— y las entradas de la arena.
+
+Ahora el servidor lleva la posición de cada jugador y se la cuenta a los
+de su zona, diez veces por segundo. Se ve el nombre, el nivel, el
+aspecto, hacia dónde mira y qué arma lleva.
+
+**Por socket, y por HTTP si no hay socket.** No es paranoia: la v29 y la
+v30 se fueron en diagnosticar "entro y no me puedo mover" y el problema
+estaba fuera del código. La arena ya tenía el pulso por HTTP; el mundo
+lo necesita por lo mismo.
+
+**Con interpolación, porque si no se ve a saltos.** Llegan diez
+posiciones por segundo y se dibuja a sesenta. Poniendo a cada uno donde
+diga el último paquete, los demás avanzan a tirones. Cada jugador guarda
+a dónde va y se le lleva suavemente.
+
+**Hasta dónde manda el servidor, dicho claro.** Acepta o corrige, no
+simula. Comprueba que la coordenada cae dentro del mundo y que el salto
+es humanamente posible, pero no lleva las colisiones con los edificios.
+Un cliente modificado todavía puede andar a la velocidad máxima en línea
+recta; lo que ya no puede es teletransportarse. Simular el movimiento
+entero obligaría a portar las colisiones del mapa al servidor, y eso es
+otro trabajo que no voy a fingir que está hecho.
+
+**Y cierra la advertencia que dejé en el paso 2.** La recolección pedía
+al cliente que dijera dónde estaba. Ahora el servidor lo sabe, así que
+mentir no cuela: la prueba se coloca lejos de un árbol, dice estar
+encima y recibe un "estás demasiado lejos".
+
 ### La pestaña de PvP ya no es una pantalla en blanco
 
 Pulsar "PVP — ARENA" escondía las mazmorras y no enseñaba nada. La

@@ -573,6 +573,22 @@ async function handleAPI(req, res, pathname, query) {
   }
   // ══════════ RECURSOS DEL MUNDO (talar / picar) ══════════
   // El huerto de más abajo sigue igual: esto va en paralelo (§7).
+  // ══════════ MUNDO COMPARTIDO ══════════
+  //
+  // El mismo pulso que va por socket, por HTTP. La lección de la v29 y
+  // la v30 fue que el WebSocket a veces no llega —un antivirus, un
+  // proxy, una extensión— y que el juego no puede depender de él. La
+  // arena ya tenía este camino; el mundo lo necesita por lo mismo.
+  if (pathname === '/api/mundo/sync' && req.method === 'POST') {
+    const r = moverEnMundo(p.username, body.pos || {})
+    if (!r) return fail(res, 'No se pudo situar en el mundo', 400)
+    return json(res, { tu: r, vecinos: vecinosDe(p.username) })
+  }
+  if (pathname === '/api/mundo/salir' && req.method === 'POST') {
+    salirDelMundo(p.username)
+    return json(res, { success: true })
+  }
+
   if (pathname === '/api/recursos' && req.method === 'GET') {
     return json(res, {
       // El espacio de coordenadas viaja con la lista: quien dibuje los
@@ -599,7 +615,7 @@ async function handleAPI(req, res, pathname, query) {
   if (pathname === '/api/recursos/golpear' && req.method === 'POST') {
     // Un golpe por petición. El límite corta el clic automático.
     if (!rateLimit('golpe:' + char.id, 180, 60_000)) return fail(res, 'Demasiado rápido', 429)
-    const r = golpearRecurso(char, body.nodoId, body.pos)
+    const r = golpearRecurso(char, body.nodoId, body.pos, p.username)
     if (r.error) return fail(res, r.error, r.code)
     return reply(r)
   }

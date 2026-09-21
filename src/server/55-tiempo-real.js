@@ -79,6 +79,9 @@ function wsBroadcast(obj, filter) {
 function wsDrop(client) {
   if (!wsClients.has(client)) return
   wsClients.delete(client)
+  // Al cerrar la pestaña, el muñeco desaparece del mundo de los demás.
+  // Sin esto quedaba de pie en mitad del pueblo hasta que caducara.
+  if (client.username && typeof salirDelMundo === 'function') salirDelMundo(client.username)
   try { client.socket.destroy() } catch {}
   wsBroadcast({ type: 'presence', online: wsOnline() })
 }
@@ -131,6 +134,17 @@ function wsHandleMessage(client, raw) {
   if (!msg || typeof msg !== 'object') return
 
   if (msg.type === 'ping') { wsSend(client, { type: 'pong' }); return }
+
+  // Dónde está el jugador en el mundo. El servidor acepta o corrige, y
+  // contesta con quién tiene al lado. Es un pulso del cliente, no un
+  // reloj aparte: así quien no se mueve no genera tráfico.
+  if (msg.type === 'mundo_entrada') {
+    const r = moverEnMundo(client.username, msg.pos || {})
+    if (!r) return
+    wsSend(client, { type: 'mundo', tu: r, vecinos: vecinosDe(client.username) })
+    return
+  }
+  if (msg.type === 'mundo_salir') { salirDelMundo(client.username); return }
 
   // Entradas del combate en tiempo real. Se sanean en entradaArena().
   if (msg.type === 'arena_entrada') { entradaArena(client.username, msg.entrada || {}); return }
