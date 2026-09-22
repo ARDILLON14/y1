@@ -33,6 +33,7 @@ Fecha: 2026-09-21 · Base auditada: commit de importación del zip `criptomundo-
 > - §0 la suite encadenada con `&&` tapaba fallos — **STEP 14**
 > - 14 de las 15 pantallas no tenían quien ejecutara su código — **STEP 15**
 > - FASE 1 comprobada en los 38 endpoints, no en un puñado — **STEP 16**
+> - nada probaba el viaje completo de un jugador — **STEP 17**
 
 Este documento es el resultado de la FASE 0. **No se ha modificado ni una
 línea de gameplay.** Todo lo que sigue está comprobado contra el código o

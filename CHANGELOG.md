@@ -4,6 +4,46 @@ Cada versión con lo que la motivó. Los detalles completos están en `docs/CAMB
 
 ## v32 (en curso) — El mundo deja de pelear consigo mismo
 
+### Una partida entera, de registrarse a vender en el mercado
+
+Cada sistema tenía su prueba y todas pasaban. Lo que no tenía prueba era
+el VIAJE: registrarse, recolectar, fabricar, equipar lo fabricado, subir
+de nivel, aceptar una misión y verla avanzar, pelear en la arena, entrar
+en una mazmorra, vender a otra persona y medirse en PvP, todo con el
+mismo personaje y de una sentada.
+
+Los fallos de integración viven justo ahí, en las costuras entre sistemas
+que cada prueba mira por separado: el objeto que se fabrica pero no se
+puede equipar, la misión que cuenta bajas de un combate y no del otro, el
+oro que se gana en un sitio y no llega al siguiente.
+
+La partida completa tarda treinta segundos y pasa entera. Las costuras
+aguantan: lo que sale del taller se equipa, se nota en la ficha y llega
+al catálogo de la arena; lo que se vende le llega al comprador y el oro
+al vendedor; el duelo mueve el rating.
+
+Lo interesante fue lo que falló al escribirla, porque los tres fallos
+eran míos y los tres enseñaron algo:
+
+**La misión no avanzaba en cuarenta turnos.** La prueba cogía la primera
+misión disponible —que a nivel 3 es la de trolls— y luego peleaba contra
+arañas. Con razón no avanzaba. Ahora la prueba lee el objetivo de la
+misión y pelea contra el bicho que pide ELLA. De paso dejó ver algo del
+juego que conviene saber: **no hay ninguna misión para la araña**, que es
+justo el bicho contra el que pelea todo el mundo al empezar.
+
+**Cero bajas en la arena.** El personaje entraba después de cuarenta
+turnos de pelea, a media vida, y se moría antes de matar a nadie. Lo que
+medía entonces no era la arena sino el desgaste. Ahora entra curado, como
+entraría cualquiera, y con un presupuesto medido: con los puños, la
+primera araña cae sobre el paso 110.
+
+**El oro bajaba 46 monedas y la prueba lo llamaba fallo.** Eran 938 × 5 %:
+el servidor cobra ese porcentaje por perder en la arena, y lo cobró
+correctamente. La comprobación exigía que el oro no bajara nunca, que es
+una regla que el juego no tiene. Ahora comprueba la regla de verdad:
+ganar paga, perder cuesta el 5 %, abandonar ni paga ni cobra.
+
 ### La regla principal del proyecto, comprobada en los 38 endpoints
 
 La regla de la FASE 1 es una sola y vale para todo el juego: el servidor
