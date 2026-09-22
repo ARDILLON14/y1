@@ -4,6 +4,61 @@ Cada versión con lo que la motivó. Los detalles completos están en `docs/CAMB
 
 ## v32 (en curso) — El mundo deja de pelear consigo mismo
 
+### La cuarta vez que la misma clase de defecto aparece en una prueba
+
+`test-sesiones-persisten` daba un golpe a una araña y exigía que le
+hubiera quitado vida. Un ataque falla el 5 % de las veces. Una de cada
+veinte ejecuciones, en rojo sin que hubiera nada roto.
+
+Es la cuarta: antes fueron `test-turnos`, `test-contenido` y
+`test-seguridad`. Y esta la había escrito yo mismo, después de corregir
+las otras tres. Conviene dejarlo escrito así de claro: saber que existe
+un modo de fallo no basta para no repetirlo.
+
+La regla, otra vez: una prueba que observa algo que el servidor decide
+con un dado, o insiste hasta verlo con un presupuesto medido, o no lo
+exige. Aquí se hacen las dos cosas. Para arrancar la batalla se insiste
+hasta seis golpes. Y para comprobar que tras el reinicio el enemigo sigue
+herido se dejó de exigir que la vida BAJE —eso obliga a acertar otro
+golpe— y se exige lo que de verdad se quería saber: que no ha vuelto al
+tope.
+
+### La animación de arma que nadie había probado nunca
+
+El código lleva versiones diciendo, con estas palabras, que "añadir la
+animación será copiar un archivo, no tocar el renderer". La carpeta donde
+irían esos archivos no existe. O sea que ese camino no se había ejecutado
+jamás con un archivo de verdad, y si tuviera un fallo nadie lo sabría
+hasta que alguien dibujara la primera animación y se encontrara con que
+no aparece.
+
+Lo que falta ahí es arte, y eso no lo arregla un paso de ingeniería. Lo
+que sí se puede hacer es comprobar que la promesa es cierta.
+
+La prueba nueva no dibuja nada: fabrica un PNG válido —Node no trae
+encoder de imágenes, pero un PNG sin filtros es poco más que las filas en
+crudo comprimidas con zlib— con la forma que el renderer espera, lo deja
+en una carpeta de assets aparte y arranca el servidor apuntando ahí.
+Luego recorre el camino entero: que el arma anuncia su tira con los
+cuadros contados del propio archivo, que el PNG se sirve con su tipo, que
+la tira llega a la PARTIDA y no solo al catálogo, y que un arma sin tira
+sigue cayendo al gesto calculado en vez de romperse.
+
+La promesa se cumple. Ahora está comprobado en vez de prometido.
+
+Y de paso salió una trampa. El número de cuadros se saca de dividir ancho
+entre alto, así que una tira cuyo ancho no sea múltiplo exacto del alto
+daba un número equivocado: con 150×70 salían dos cuadros y el renderer
+recortaba 70 px de ancho sobre un dibujo de 75, o sea medio arma
+desplazada, sin que nada avisara. Ahora se rechaza y se dice por consola,
+con el mismo criterio que ya se usaba con las skins: mejor no animarla
+—que es exactamente lo que pasa hoy sin archivo— que dibujar algo roto en
+silencio.
+
+Mi primer intento de tira inválida para la prueba fue 140×70, y estaba
+mal: eso sí son dos cuadros de 70 y la tira es perfectamente válida. La
+comprobación lo dijo en rojo, que es para lo que está.
+
 ### Un enemigo podía meterse dentro del jugador, y la prueba que lo vigilaba fallaba por otra cosa
 
 `test-movimiento` fallaba una de cada tres ejecuciones, y no siempre en

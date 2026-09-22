@@ -90,10 +90,27 @@ async function run() {
   // Algo que deje rastro en cada una de las tres estructuras nuevas.
   await req('POST', '/api/chat', { message: 'hola desde antes del reinicio' })
   // No hay endpoint para "empezar" una batalla: la crea el primer golpe.
-  const bat = await req('POST', '/api/combat/action', { monsterId: 'm_spider', action: 'attack' })
+  //
+  // Y se insiste hasta que el golpe ENTRE. Un ataque falla el 5 % de las
+  // veces; con un solo golpe, una de cada veinte ejecuciones dejaba a la
+  // araña intacta y esta prueba daba en rojo sin que hubiera nada roto.
+  // Es la misma familia de defecto que ya se corrigió en test-turnos,
+  // test-contenido y test-seguridad: una prueba que observa algo que el
+  // servidor decide con un dado tiene que insistir con un presupuesto
+  // medido. Seis intentos dejan la probabilidad de fallar los seis por
+  // debajo de uno entre diez mil.
+  let bat = null, golpes = 0
+  for (let i = 0; i < 6; i++) {
+    const r = await req('POST', '/api/combat/action', { monsterId: 'm_spider', action: 'attack' })
+    if (r.status !== 200) { bat = r; break }
+    golpes++
+    bat = r
+    if (r.body.newMonsterHp < r.body.enemyMaxHp) break
+    await dormir(420)
+  }
   check('empieza una batalla por turnos', bat.status === 200 && !!bat.body.battleId, String(bat.status) + ' ' + bat.raw.slice(0, 80))
   check('y la araña ya ha perdido vida', bat.body.newMonsterHp < bat.body.enemyMaxHp,
-    `${bat.body.newMonsterHp} de ${bat.body.enemyMaxHp}`)
+    `${bat.body.newMonsterHp} de ${bat.body.enemyMaxHp} tras ${golpes} golpes`)
   const batallaId = bat.body.battleId
   const hpEnemigo = bat.body.newMonsterHp
 
@@ -134,9 +151,15 @@ async function run() {
   // pasaría sola sin haber comprobado nada.
   check('es LA MISMA batalla, no una nueva', !!batallaId && acc.body.battleId === batallaId,
     `${batallaId} → ${acc.body.battleId}`)
+  // Mismo cuidado con el dado: lo que se comprueba es que la vida SIGUE
+  // donde estaba, así que basta con que no haya vuelto al tope. Exigir
+  // que baje obliga a que el golpe acierte, y eso es otro 5 %.
   check('el enemigo conserva la vida que le quedaba, no vuelve a empezar',
-    acc.body.enemyDied || acc.body.newMonsterHp < hpEnemigo,
-    `antes ${hpEnemigo} ahora ${acc.body.newMonsterHp}`)
+    acc.body.enemyDied || acc.body.newMonsterHp <= hpEnemigo,
+    `antes ${hpEnemigo} ahora ${acc.body.newMonsterHp} de ${acc.body.enemyMaxHp}`)
+  check('y desde luego no está otra vez entero',
+    acc.body.enemyDied || acc.body.newMonsterHp < acc.body.enemyMaxHp,
+    `${acc.body.newMonsterHp} de ${acc.body.enemyMaxHp}`)
 
   console.log('\n── EL CHAT NO SE BORRA ──')
   const chat = await req('GET', '/api/chat', null, galleta)

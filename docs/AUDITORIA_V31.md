@@ -28,6 +28,7 @@ Fecha: 2026-09-21 · Base auditada: commit de importación del zip `criptomundo-
 > - §3.4 el jefe no tenía mecánica propia — **STEP 11** (ya completo)
 > - §0 el ruido del arranque (3 a 6 muertes para lo mismo) — **STEP 12**
 > - §0 `test-movimiento` intermitente, y un fallo real detrás — **STEP 12**
+> - §5.3 el camino de animación de arma no lo había probado nadie — **STEP 13**
 
 Este documento es el resultado de la FASE 0. **No se ha modificado ni una
 línea de gameplay.** Todo lo que sigue está comprobado contra el código o
@@ -497,6 +498,29 @@ arco, contra `en.cfg.radio`), así que el hitbox de ataque no es el tamaño
 del sprite. Pero cuerpo de colisión y hurtbox comparten el mismo `radio`.
 
 ### 5.3 Sprites
+
+> ⚠️ **Lo que falta aquí es ARTE, no código, y eso no lo arregla un paso
+> de ingeniería.** Lo que sí se podía hacer se hizo en el **STEP 13**:
+> comprobar que el mecanismo que espera ese arte funciona.
+>
+> El código dice, con estas palabras, que "añadir la animación será
+> copiar un archivo, no tocar el renderer". Esa carpeta no existe, así
+> que ese camino no se había ejecutado nunca con un archivo de verdad:
+> si tuviera un fallo, nadie lo sabría hasta que alguien dibujara la
+> primera animación y se encontrara con que no aparece.
+>
+> `test-sprites-armas.js` fabrica un PNG válido con la forma que el
+> renderer espera, arranca el servidor apuntando a una carpeta de assets
+> aparte y comprueba el camino entero: que el arma anuncia su tira con
+> los cuadros bien contados, que el archivo se sirve, que la tira llega
+> a la partida y no solo al catálogo, y que un arma sin tira sigue
+> cayendo al gesto calculado. La promesa se cumple.
+>
+> Y de paso salió una trampa: el número de cuadros se saca de dividir
+> ancho entre alto, así que una tira cuyo ancho no sea múltiplo del alto
+> daba un número equivocado y recortaba medio arma sin avisar. Ahora se
+> rechaza y se dice por consola, igual que se hace con las skins.
+
 
 | | |
 |---|---|

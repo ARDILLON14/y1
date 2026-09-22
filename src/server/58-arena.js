@@ -309,8 +309,26 @@ function tiraDe(id) {
     const buf = fs.readFileSync(ruta)
     if (buf.readUInt32BE(0) === 0x89504e47) {
       const w = buf.readUInt32BE(16), h = buf.readUInt32BE(20)
-      const cuadros = Math.max(1, Math.round(w / Math.max(1, h)))
-      r = { url: '/assets/items/anim/' + id + '.png', cuadros, alto: h }
+      // La convención es cuadros CUADRADOS en fila, y aquí se comprueba
+      // en vez de confiar.
+      //
+      // El número de cuadros sale de dividir ancho entre alto, así que
+      // la convención solo se sostiene si esa división es exacta. Una
+      // tira de 150×70 no son ni dos cuadros ni tres: `Math.round` decía
+      // dos y el renderer recortaba 70 px de ancho sobre un dibujo de
+      // 75, o sea medio arma desplazada, sin que nada avisara.
+      //
+      // Aquí no hay catálogo al que preguntarle cuántos cuadros son
+      // —las skins sí lo tienen—, así que la única salida honesta es
+      // rechazar lo que no cuadra y decirlo por consola. Se pierde la
+      // animación, que es exactamente lo que pasa hoy sin archivo, y se
+      // gana no dibujar algo roto en silencio.
+      if (h > 0 && w % h === 0) {
+        r = { url: '/assets/items/anim/' + id + '.png', cuadros: Math.max(1, w / h), alto: h }
+      } else {
+        console.warn(`  ⚠️  Tira de arma descartada: items/anim/${id}.png mide ${w}×${h}. ` +
+                     'Los cuadros tienen que ser cuadrados y en fila (ancho múltiplo del alto).')
+      }
     }
   } catch { r = null }
   TIRAS.set(id, r)
