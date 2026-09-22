@@ -53,6 +53,7 @@ const PRUEBAS = [
   ['test-arena-hurtbox', 3882], ['test-mazmorra-salas', 3883],
   ['test-economia-objetos', 3884], ['test-mazmorra-jefe', 3885],
   ['test-muerte-progreso', 3886], ['test-sprites-armas', 3887],
+  ['test-paginas', 3888],
 ]
 
 // Estas miden TIEMPO: duraciones de animación, ventanas de golpe,

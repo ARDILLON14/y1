@@ -4,6 +4,42 @@ Cada versión con lo que la motivó. Los detalles completos están en `docs/CAMB
 
 ## v32 (en curso) — El mundo deja de pelear consigo mismo
 
+### Catorce de las quince pantallas no tenían quien las ejecutara
+
+Solo la arena tenía una prueba que EJECUTARA su código. Las demás se
+comprobaban mirando el texto del HTML, y eso no distingue una pantalla
+que funciona de una que revienta en la primera línea.
+
+Así que se pasaron las quince por un DOM de mentira contra un servidor de
+verdad, a ver qué salía. La respuesta honesta: **nada**. Las quince
+cargan, todas declaran viewport y fijan la escala inicial, ninguna enlaza
+un archivo que falte, y las cincuenta y tres rutas de API que usan entre
+todas existen en el servidor. La capa de pantalla está mejor de lo que yo
+suponía, y eso conviene decirlo en vez de inventarse trabajo.
+
+Lo que sí faltaba era la red. `test-paginas.js` vigila ahora cuatro cosas
+que se rompen en silencio:
+
+- que ninguna pantalla lance un error al cargar;
+- que ninguna llame a una ruta que no exista. La auditoría había
+  encontrado el caso simétrico, endpoints sin nadie que los llamara;
+  este es el que duele más, porque una pantalla que pide algo que no está
+  se queda a medias sin decir por qué;
+- que todas declaren viewport con escala inicial;
+- que ningún archivo enlazado dé 404.
+
+Una prueba verde desde el primer día no demuestra nada si no se sabe que
+puede detectar algo, así que se le inyectaron los cuatro fallos de uno en
+uno: una pantalla que revienta, una ruta inventada, un viewport borrado y
+una imagen que no existe. Los cuatro salieron en rojo con el nombre del
+archivo y el motivo.
+
+La del mundo 2D monta una escena de Phaser y ejecutarla pide un navegador
+con canvas y WebGL. Se comprueba lo que sí se puede: que su código
+parsea, que Phaser se enlaza desde el propio servidor y que el CDN queda
+detrás, solo de respaldo. Fingir un Phaser de mentira daría un verde que
+no significa nada, y eso es peor que no probarlo.
+
 ### La suite tardaba media hora y paraba en el primer fallo
 
 Eran dos problemas de la misma línea de `package.json`: cuarenta y tantos

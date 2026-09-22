@@ -31,6 +31,7 @@ Fecha: 2026-09-21 · Base auditada: commit de importación del zip `criptomundo-
 > - §5.3 el camino de animación de arma no lo había probado nadie — **STEP 13**
 > - §5.7 la suite no se podía ejecutar en paralelo — **STEP 14**
 > - §0 la suite encadenada con `&&` tapaba fallos — **STEP 14**
+> - 14 de las 15 pantallas no tenían quien ejecutara su código — **STEP 15**
 
 Este documento es el resultado de la FASE 0. **No se ha modificado ni una
 línea de gameplay.** Todo lo que sigue está comprobado contra el código o
