@@ -546,6 +546,9 @@ function iniciarEncuentro(player, cfg) {
     entrada: { mx: 0, my: 0, atacar: false, apuntar: -Math.PI / 2, esquivar: false },
     inicio: now(), ultimoTick: now(), estado: 'activa',
     bajas: 0, botin: [], xp: 0,
+    // Una sala jugable (cofre, trampa, santuario). Cuando la hay, el
+    // encuentro se gana cumpliendo su objetivo y no vaciando la sala.
+    sala: cfg.sala || null,
   }
   p.seguimiento = seguimientoDe(char, ESCALA_ARENA, nivelDeArena(falsaArena))
   lanzarOleada(p)
@@ -1148,8 +1151,22 @@ function tick(p) {
     p.enemigos = p.enemigos.filter(en => !en.muerto)
   }
 
+  // Salas jugables: los peligros disparan y el objetivo avanza. Va
+  // aquí, después de mover proyectiles, para que un dardo recién
+  // lanzado no atraviese medio mapa en su primer tick.
+  if (p.sala && p.estado === 'activa') {
+    pasoPeligros(p, ahora)
+    const finSala = pasoObjetivo(p, ahora, dt)
+    if (finSala) return finSala
+  }
+
   // Fin de oleada / de arena
-  if (!p.enemigos.length && p.estado === 'activa') {
+  //
+  // Una sala jugable se gana por el objetivo, no por vaciarla: sin este
+  // `!p.sala` un pasillo de trampas —que no tiene un solo enemigo— se
+  // daría por ganado en el primer tick, antes de que al jugador le diera
+  // tiempo a moverse.
+  if (!p.enemigos.length && p.estado === 'activa' && !p.sala) {
     p.oleada++
     if (p.oleada >= p.arena.oleadas.length) return terminar(p, 'victoria')
     lanzarOleada(p)
@@ -1315,6 +1332,26 @@ function resumen(p) {
       dir: lado(p.jugador.mirando),
       esquivando: ahora < p.jugador.esquivarHasta,
     },
+    // La sala, cuando la hay. El cliente necesita saber a dónde ir,
+    // cuánto lleva aguantando y dónde están los emisores para poder
+    // pintar el aviso antes del dardo: sin el aviso dibujado, la
+    // telegrafía del servidor no sirve de nada.
+    sala: p.sala ? {
+      tipo: p.sala.tipo, nombre: p.sala.nombre,
+      objetivo: {
+        x: p.sala.objetivo.x, y: p.sala.objetivo.y, radio: p.sala.objetivo.radio,
+        icono: p.sala.objetivo.icono, etiqueta: p.sala.objetivo.etiqueta,
+        progreso: Math.min(1, (p.sala.objetivo.progreso || 0) / p.sala.objetivo.usarMs),
+        hecho: !!p.sala.objetivo.hecho,
+      },
+      peligros: p.sala.peligros.map(h => ({
+        id: h.id, x: Math.round(h.x), y: Math.round(h.y), ang: Number(h.ang.toFixed(2)),
+        // Cuánto queda para lo siguiente y si lo siguiente es un
+        // disparo. Con esto la pantalla puede pintar la cuenta atrás.
+        avisando: h.avisando, restanteMs: Math.max(0, h.prox - ahora),
+      })),
+    } : null,
+
     // Restos: solo para dibujar. No tienen vida, no reciben golpes y no
     // cuentan para nada. El cliente los pinta apagándose.
     restos: (p.restos || []).map(r => ({

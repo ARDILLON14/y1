@@ -22,6 +22,7 @@ Fecha: 2026-09-21 · Base auditada: commit de importación del zip `criptomundo-
 > - §5.1 sesiones, batallas y chat se perdían al reiniciar — **STEP 7**
 > - §5.2 cuerpo y hurtbox compartían radio — **STEP 8** (ya completo)
 > - §0 `build.js --check` no comprobaba que el archivo parseara — **STEP 8**
+> - §3.4 cofre, trampa y santuario eran tiradas de dados — **STEP 9**
 
 Este documento es el resultado de la FASE 0. **No se ha modificado ni una
 línea de gameplay.** Todo lo que sigue está comprobado contra el código o
@@ -355,6 +356,20 @@ pestaña que debería hacerlo está rota (§2.3). El PvP hoy no se puede jugar
 de ninguna manera.
 
 ### 3.4 Mazmorras: el combate es real, el resto son dados
+
+> ✅ **Resuelto en el STEP 9.** Las tres salas abren ahora un encuentro
+> en el mismo motor de arena que ya usaban las de combate, con un
+> objetivo que no es matar: ir a un sitio y aguantar allí. El cofre hay
+> que forzarlo mientras cuatro emisores disparan a través de él; el
+> pasillo hay que cruzarlo entre tres filas de dardos que avisan antes
+> de salir; la fuente hay que alcanzarla y beber. Los números de antes
+> —el botín de cada sala, el 35 % del santuario, el daño de la trampa—
+> no se han tocado: lo que cambia es que dependen de lo que haga el
+> jugador. Lo cubre `test-mazmorra-salas.js`, que las juega por HTTP.
+>
+> Sigue pendiente lo otro que dice este apartado: el jefe no tiene
+> arena propia ni mecánica especial.
+
 
 `src/server/59-mazmorras.js` genera el mapa con semilla y **las salas de
 combate, élite y jefe usan el motor de arena de verdad** (`iniciarEncuentro`).

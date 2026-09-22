@@ -518,6 +518,12 @@ function pintarEstado(e) {
     // versiones entender de que hablaba el reporte.
     else if (s.t === 'empujon') anotar('🫸 ¡Te aparta de un empujón para tomar carrerilla!')
     else if (s.t === 'esquiva') anotar('💨 Esquivado')
+    // Salas jugables: el aviso del emisor se pinta en el lienzo, pero el
+    // disparo y el final de la sala también se cuentan, porque el
+    // registro es lo que un jugador relee cuando no entiende qué le pasó.
+    else if (s.t === 'peligro') chispas.push({ x: s.x, y: s.y, t: 0, semilla: Math.random() * 6.28, color: '#E06040' })
+    else if (s.t === 'cura') { flotantes.push({ x: s.x, y: s.y, txt: '+' + s.dmg, mio: true, t: 0 }); anotar('⛲ Recuperas ' + s.dmg + ' de vida') }
+    else if (s.t === 'sala_hecha') anotar('✅ Sala superada')
   })
 }
 
@@ -828,6 +834,57 @@ function dibujar() {
   requestAnimationFrame(dibujar)
 }
 
+// Salas jugables (cofre, trampa, santuario).
+//
+// Lo que hay que ver de un vistazo es: a dónde voy, cuánto llevo, y de
+// dónde va a salir el siguiente dardo. El servidor manda la telegrafía
+// de cada emisor; si no se dibuja, el aviso no existe para el jugador y
+// la sala se convierte en daño aleatorio, que es justo lo que se estaba
+// quitando.
+function pintarSala(sala, ahoraMs) {
+  var o = sala.objetivo
+  var pulsoLento = 0.5 + 0.5 * Math.sin(ahoraMs / 420)
+
+  // Zona objetivo: un círculo con el borde marcado y el progreso como
+  // un arco que se va cerrando.
+  ctx.beginPath(); ctx.arc(o.x, o.y, o.radio, 0, Math.PI * 2)
+  ctx.fillStyle = 'rgba(200,168,75,' + (0.06 + 0.05 * pulsoLento) + ')'; ctx.fill()
+  ctx.strokeStyle = 'rgba(200,168,75,.45)'; ctx.lineWidth = 2; ctx.stroke()
+  if (o.progreso > 0) {
+    ctx.beginPath()
+    ctx.arc(o.x, o.y, o.radio + 8, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * o.progreso)
+    ctx.strokeStyle = '#F0D070'; ctx.lineWidth = 5; ctx.stroke()
+  }
+  ctx.font = '30px serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+  ctx.fillText(o.icono, o.x, o.y)
+  ctx.font = '12px system-ui, sans-serif'
+  ctx.fillStyle = 'rgba(232,224,208,.75)'
+  ctx.fillText(o.etiqueta, o.x, o.y + o.radio + 16)
+
+  // Emisores. Rojo creciente mientras avisan, y una línea que enseña
+  // por dónde va a pasar el dardo: la trayectoria es la información,
+  // no el emisor.
+  ;(sala.peligros || []).forEach(function (h) {
+    var largo = 900
+    if (h.avisando) {
+      // Cuanto menos queda, más marcada. Así el aviso se lee como una
+      // cuenta atrás y no como un adorno encendido.
+      var cerca = 1 - Math.min(1, h.restanteMs / 520)
+      ctx.beginPath()
+      ctx.moveTo(h.x, h.y)
+      ctx.lineTo(h.x + Math.cos(h.ang) * largo, h.y + Math.sin(h.ang) * largo)
+      ctx.strokeStyle = 'rgba(224,80,64,' + (0.12 + 0.35 * cerca) + ')'
+      ctx.lineWidth = 2 + 6 * cerca
+      ctx.stroke()
+    }
+    ctx.beginPath(); ctx.arc(h.x, h.y, 11, 0, Math.PI * 2)
+    ctx.fillStyle = h.avisando ? '#E05040' : '#40301C'
+    ctx.fill()
+    ctx.strokeStyle = 'rgba(0,0,0,.5)'; ctx.lineWidth = 2; ctx.stroke()
+  })
+  ctx.lineWidth = 1
+}
+
 var ultimoCuadro = 0
 function pintarEscena() {
   var ahoraMs = Date.now()
@@ -843,6 +900,10 @@ function pintarEscena() {
   for (var y = 0; y < 600; y += 45) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(900, y); ctx.stroke() }
 
   if (estado) {
+    // La sala se pinta ANTES que todo lo que se mueve: es el suelo de
+    // la escena, no un adorno por encima.
+    if (estado.sala) pintarSala(estado.sala, ahoraMs)
+
     ;(estado.proyectiles || []).forEach(function (p) {
       // El color lo manda el servidor con el elemento. Aquí no hay una
       // tabla de elementos paralela: si mañana hay uno nuevo, se pinta

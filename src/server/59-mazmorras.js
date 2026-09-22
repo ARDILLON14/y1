@@ -105,6 +105,10 @@ function estadoRun(run) {
     id: run.id, mazmorra: run.mz.id, nombre: run.mz.nombre, icono: run.mz.icono,
     piso: run.piso + 1, pisos: run.mz.pisos,
     opciones, enCombate: run.enCombate,
+    // Qué sala se está jugando ahora mismo. Sin esto la pantalla solo
+    // sabe "hay algo en curso" y tiene que llamarlo combate, aunque lo
+    // que haya delante sea un cofre o una fuente.
+    salaEnCurso: run.enCombate && run.salaActual ? run.salaActual.tipo : null,
     acumulado: {
       xp: run.xp, bajas: run.bajas,
       botin: run.botin.map(b => ({ ...b, nombre: template(b.itemId).name, icono: template(b.itemId).icon })),
@@ -166,40 +170,43 @@ function elegirSala(player, salaId) {
     return { combate: true, run: estadoRun(run), partida: r.partida }
   }
 
-  if (sala.tipo === 'cofre') {
-    if (sala.trampeado) {
-      const esquiva = Math.random() < Math.min(0.6, effectiveStats(char).agility / 120)
-      if (!esquiva) {
-        const daño = Math.round(run.vidaMax * 0.15)
-        run.vidaActual = Math.max(1, run.vidaActual - daño)
-        run.registro.push(`🪤 El cofre estaba trampeado: pierdes ${daño} de vida.`)
-      } else {
-        run.registro.push('🤸 El cofre estaba trampeado, pero lo esquivaste.')
-      }
-    }
-    const cantidad = 1 + Math.floor(Math.random() * 2)
-    run.botin.push({ itemId: sala.objeto, quantity: cantidad })
-    run.registro.push(`📦 Encuentras ${template(sala.objeto).name} ×${cantidad}.`)
-  } else if (sala.tipo === 'trampa') {
-    const esquiva = Math.random() < Math.min(0.7, effectiveStats(char).agility / 100)
-    if (esquiva) run.registro.push('🤸 Cruzas el pasillo sin activar nada.')
-    else {
-      const daño = Math.round(run.vidaMax * sala.daño)
-      run.vidaActual = Math.max(1, run.vidaActual - daño)
-      run.registro.push(`🪤 Los dardos te alcanzan: ${daño} de vida.`)
-    }
-    if (sala.objeto) {
-      run.botin.push({ itemId: sala.objeto, quantity: 1 })
-      run.registro.push(`Entre los restos hay ${template(sala.objeto).name}.`)
-    }
-  } else if (sala.tipo === 'santuario') {
-    const cura = Math.round(run.vidaMax * sala.cura)
-    run.vidaActual = Math.min(run.vidaMax, run.vidaActual + cura)
-    run.registro.push(`⛲ Bebes del santuario: +${cura} de vida.`)
-  }
-
+  // Cofre, trampa y santuario: también se juegan.
+  //
+  // Antes esto era una tirada instantánea. `Math.random()` decidía si el
+  // cofre estaba trampeado, `Math.random()` contra la agilidad decidía
+  // si los dardos te daban, y el santuario sumaba vida y avanzaba. El
+  // jugador pulsaba una sala y leía el resultado: no había nada que
+  // hacer bien ni mal.
+  //
+  // Ahora las tres abren una sala en el mismo motor de arena que ya
+  // usaban las de combate, con un objetivo que no es matar: ir a un
+  // sitio y aguantar. Los dardos avisan antes de salir y se esquivan
+  // moviéndose, que es lo que pedía la FASE 15.
+  //
+  // Lo que NO cambia: el botín que da cada sala, la curación del
+  // santuario y el daño que puede costar una trampa. Los números
+  // siguen siendo los de antes; lo que cambia es que ahora dependen de
+  // lo que haga el jugador y no de un dado.
+  const cfgSala = salaDeMazmorra(sala.tipo, {
+    nombre: sala.nombre,
+    trampeado: !!sala.trampeado,
+    dmgFrac: sala.daño,
+    cura: sala.cura,
+    botin: sala.objeto ? [{ itemId: sala.objeto, quantity: 1 + Math.floor(Math.random() * 2) }] : [],
+  })
+  const rs = iniciarEncuentro(player, {
+    oleadas: [[]],
+    nombre: `${run.mz.nombre} · ${sala.nombre}`,
+    origen: 'mazmorra', runId: run.id, vidaInicial: run.vidaActual,
+    nivelBase: char.level,
+    sala: cfgSala,
+  })
+  if (rs.error) return rs
+  run.enCombate = true
+  run.salaActual = sala
   sala.hecha = true
-  return avanzarPiso(player, run)
+  run.registro.push(`${sala.icono} ${sala.nombre}: ${cfgSala.objetivo.etiqueta}.`)
+  return { combate: true, sala: sala.tipo, run: estadoRun(run), partida: rs.partida }
 }
 
 function avanzarPiso(player, run) {

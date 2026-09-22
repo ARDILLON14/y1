@@ -719,8 +719,15 @@ function pintarRun() {
     (run.acumulado.botin.length ? run.acumulado.botin.map(function (b) { return b.icono }).join('') : 'nada') + '</div>'
 
   if (run.enCombate) {
-    html += '<div class="mz-combate">⚔️ Combate en curso. Ve a la <b>Arena</b> para pelear; ' +
-      'al terminar vuelve aquí.</div>'
+    // Decir "combate" delante de un cofre o de una fuente manda al
+    // jugador a la Arena esperando enemigos y no los hay. Cada sala se
+    // anuncia por lo que es.
+    var enCurso = {
+      cofre: '📦 Cámara del tesoro abierta. Ve a la <b>Arena</b>: el cofre hay que forzarlo.',
+      trampa: '🪤 Pasillo trampeado. Ve a la <b>Arena</b>: hay que cruzarlo esquivando.',
+      santuario: '⛲ Santuario. Ve a la <b>Arena</b>: hay que llegar a la fuente y beber.',
+    }[run.salaEnCurso] || '⚔️ Combate en curso. Ve a la <b>Arena</b> para pelear.'
+    html += '<div class="mz-combate">' + enCurso + ' Al terminar vuelve aquí.</div>'
   } else {
     html += '<div class="mz-titulo">Elige por dónde seguir</div><div class="mz-salas">'
     run.opciones.forEach(function (o) {
@@ -748,7 +755,11 @@ async function elegir(salaId) {
     // El combate vive en la Arena: se abre ahí y al volver se recarga
     pintarRun()
     try { window.parent.postMessage({ type: 'OPEN_MODULE', payload: { module: 'arena' } }, '*') } catch (e) {}
-    avisar('⚔️ Combate iniciado: ve a la pestaña Arena')
+    avisar({
+      cofre: '📦 Cofre por forzar: ve a la pestaña Arena',
+      trampa: '🪤 Pasillo por cruzar: ve a la pestaña Arena',
+      santuario: '⛲ Fuente por alcanzar: ve a la pestaña Arena',
+    }[r.d.sala] || '⚔️ Combate iniciado: ve a la pestaña Arena')
   } else pintarRun()
 }
 

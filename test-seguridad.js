@@ -82,13 +82,34 @@ async function run() {
   if (r.status === 429) { await sleep(450); r = await req('POST', '/api/combat/action', { monsterId: 'm_spider', action: 'attack', monsterCurrentHp: 1 }) }
   check('el cliente no puede fijar el HP del enemigo', r.body.newMonsterHp > 1, `hp=${r.body.newMonsterHp}`)
   const hp1 = r.body.newMonsterHp
-  await sleep(450)
-  r = await req('POST', '/api/combat/action', { monsterId: 'm_spider', action: 'attack', monsterCurrentHp: 99999 })
-  // El servidor rechaza acciones demasiado seguidas: si topa con ese
-  // límite, se espera y se repite. Sin esto la prueba fallaba a veces
-  // por temporización y no por un fallo real.
-  if (r.status === 429) { await sleep(600); r = await req('POST', '/api/combat/action', { monsterId: 'm_spider', action: 'attack', monsterCurrentHp: 99999 }) }
-  check('la batalla persiste en el servidor', r.body.newMonsterHp < hp1 || r.body.enemyDied)
+  // Segundo golpe: lo que se comprueba es que la vida del enemigo viene
+  // de la batalla guardada en el servidor y no de lo que mande el
+  // cliente. Para verlo hace falta que el golpe ACIERTE.
+  //
+  // Antes se daba un golpe y ya. Un ataque falla el 5 % de las veces, y
+  // cuando fallaba la vida del enemigo se quedaba igual y la prueba
+  // daba en rojo sin que hubiera nada roto: una de cada veinte suites.
+  // Es el mismo modo de fallo que ya se corrigió en test-turnos y en
+  // test-contenido — una prueba que observa algo que el servidor decide
+  // con un dado tiene que insistir hasta verlo, con un presupuesto
+  // medido, o no exigirlo.
+  //
+  // Seis intentos dejan la probabilidad de no acertar ninguno en menos
+  // de uno entre diez mil.
+  let hp2 = hp1, golpes = 0, murio = false
+  for (let i = 0; i < 6 && hp2 >= hp1 && !murio; i++) {
+    await sleep(450)
+    r = await req('POST', '/api/combat/action', { monsterId: 'm_spider', action: 'attack', monsterCurrentHp: 99999 })
+    // El servidor rechaza acciones demasiado seguidas: si topa con ese
+    // límite, se espera y se repite. Sin esto la prueba fallaba a veces
+    // por temporización y no por un fallo real.
+    if (r.status === 429) { await sleep(600); continue }
+    golpes++
+    murio = !!r.body.enemyDied
+    if (typeof r.body.newMonsterHp === 'number') hp2 = r.body.newMonsterHp
+  }
+  check('la batalla persiste en el servidor', hp2 < hp1 || murio,
+    `${hp1} → ${hp2} en ${golpes} golpes`)
   r = await req('POST', '/api/combat/action', { monsterId: 'm_inventado', action: 'attack' })
   check('monstruo inexistente rechazado', r.status === 404)
   await sleep(450)

@@ -7777,6 +7777,12 @@ function pintarEstado(e) {
     // versiones entender de que hablaba el reporte.
     else if (s.t === 'empujon') anotar('🫸 ¡Te aparta de un empujón para tomar carrerilla!')
     else if (s.t === 'esquiva') anotar('💨 Esquivado')
+    // Salas jugables: el aviso del emisor se pinta en el lienzo, pero el
+    // disparo y el final de la sala también se cuentan, porque el
+    // registro es lo que un jugador relee cuando no entiende qué le pasó.
+    else if (s.t === 'peligro') chispas.push({ x: s.x, y: s.y, t: 0, semilla: Math.random() * 6.28, color: '#E06040' })
+    else if (s.t === 'cura') { flotantes.push({ x: s.x, y: s.y, txt: '+' + s.dmg, mio: true, t: 0 }); anotar('⛲ Recuperas ' + s.dmg + ' de vida') }
+    else if (s.t === 'sala_hecha') anotar('✅ Sala superada')
   })
 }
 
@@ -8087,6 +8093,57 @@ function dibujar() {
   requestAnimationFrame(dibujar)
 }
 
+// Salas jugables (cofre, trampa, santuario).
+//
+// Lo que hay que ver de un vistazo es: a dónde voy, cuánto llevo, y de
+// dónde va a salir el siguiente dardo. El servidor manda la telegrafía
+// de cada emisor; si no se dibuja, el aviso no existe para el jugador y
+// la sala se convierte en daño aleatorio, que es justo lo que se estaba
+// quitando.
+function pintarSala(sala, ahoraMs) {
+  var o = sala.objetivo
+  var pulsoLento = 0.5 + 0.5 * Math.sin(ahoraMs / 420)
+
+  // Zona objetivo: un círculo con el borde marcado y el progreso como
+  // un arco que se va cerrando.
+  ctx.beginPath(); ctx.arc(o.x, o.y, o.radio, 0, Math.PI * 2)
+  ctx.fillStyle = 'rgba(200,168,75,' + (0.06 + 0.05 * pulsoLento) + ')'; ctx.fill()
+  ctx.strokeStyle = 'rgba(200,168,75,.45)'; ctx.lineWidth = 2; ctx.stroke()
+  if (o.progreso > 0) {
+    ctx.beginPath()
+    ctx.arc(o.x, o.y, o.radio + 8, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * o.progreso)
+    ctx.strokeStyle = '#F0D070'; ctx.lineWidth = 5; ctx.stroke()
+  }
+  ctx.font = '30px serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+  ctx.fillText(o.icono, o.x, o.y)
+  ctx.font = '12px system-ui, sans-serif'
+  ctx.fillStyle = 'rgba(232,224,208,.75)'
+  ctx.fillText(o.etiqueta, o.x, o.y + o.radio + 16)
+
+  // Emisores. Rojo creciente mientras avisan, y una línea que enseña
+  // por dónde va a pasar el dardo: la trayectoria es la información,
+  // no el emisor.
+  ;(sala.peligros || []).forEach(function (h) {
+    var largo = 900
+    if (h.avisando) {
+      // Cuanto menos queda, más marcada. Así el aviso se lee como una
+      // cuenta atrás y no como un adorno encendido.
+      var cerca = 1 - Math.min(1, h.restanteMs / 520)
+      ctx.beginPath()
+      ctx.moveTo(h.x, h.y)
+      ctx.lineTo(h.x + Math.cos(h.ang) * largo, h.y + Math.sin(h.ang) * largo)
+      ctx.strokeStyle = 'rgba(224,80,64,' + (0.12 + 0.35 * cerca) + ')'
+      ctx.lineWidth = 2 + 6 * cerca
+      ctx.stroke()
+    }
+    ctx.beginPath(); ctx.arc(h.x, h.y, 11, 0, Math.PI * 2)
+    ctx.fillStyle = h.avisando ? '#E05040' : '#40301C'
+    ctx.fill()
+    ctx.strokeStyle = 'rgba(0,0,0,.5)'; ctx.lineWidth = 2; ctx.stroke()
+  })
+  ctx.lineWidth = 1
+}
+
 var ultimoCuadro = 0
 function pintarEscena() {
   var ahoraMs = Date.now()
@@ -8102,6 +8159,10 @@ function pintarEscena() {
   for (var y = 0; y < 600; y += 45) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(900, y); ctx.stroke() }
 
   if (estado) {
+    // La sala se pinta ANTES que todo lo que se mueve: es el suelo de
+    // la escena, no un adorno por encima.
+    if (estado.sala) pintarSala(estado.sala, ahoraMs)
+
     ;(estado.proyectiles || []).forEach(function (p) {
       // El color lo manda el servidor con el elemento. Aquí no hay una
       // tabla de elementos paralela: si mañana hay uno nuevo, se pinta
@@ -13589,8 +13650,15 @@ function pintarRun() {
     (run.acumulado.botin.length ? run.acumulado.botin.map(function (b) { return b.icono }).join('') : 'nada') + '</div>'
 
   if (run.enCombate) {
-    html += '<div class="mz-combate">⚔️ Combate en curso. Ve a la <b>Arena</b> para pelear; ' +
-      'al terminar vuelve aquí.</div>'
+    // Decir "combate" delante de un cofre o de una fuente manda al
+    // jugador a la Arena esperando enemigos y no los hay. Cada sala se
+    // anuncia por lo que es.
+    var enCurso = {
+      cofre: '📦 Cámara del tesoro abierta. Ve a la <b>Arena</b>: el cofre hay que forzarlo.',
+      trampa: '🪤 Pasillo trampeado. Ve a la <b>Arena</b>: hay que cruzarlo esquivando.',
+      santuario: '⛲ Santuario. Ve a la <b>Arena</b>: hay que llegar a la fuente y beber.',
+    }[run.salaEnCurso] || '⚔️ Combate en curso. Ve a la <b>Arena</b> para pelear.'
+    html += '<div class="mz-combate">' + enCurso + ' Al terminar vuelve aquí.</div>'
   } else {
     html += '<div class="mz-titulo">Elige por dónde seguir</div><div class="mz-salas">'
     run.opciones.forEach(function (o) {
@@ -13618,7 +13686,11 @@ async function elegir(salaId) {
     // El combate vive en la Arena: se abre ahí y al volver se recarga
     pintarRun()
     try { window.parent.postMessage({ type: 'OPEN_MODULE', payload: { module: 'arena' } }, '*') } catch (e) {}
-    avisar('⚔️ Combate iniciado: ve a la pestaña Arena')
+    avisar({
+      cofre: '📦 Cofre por forzar: ve a la pestaña Arena',
+      trampa: '🪤 Pasillo por cruzar: ve a la pestaña Arena',
+      santuario: '⛲ Fuente por alcanzar: ve a la pestaña Arena',
+    }[r.d.sala] || '⚔️ Combate iniciado: ve a la pestaña Arena')
   } else pintarRun()
 }
 
@@ -24856,6 +24928,9 @@ function iniciarEncuentro(player, cfg) {
     entrada: { mx: 0, my: 0, atacar: false, apuntar: -Math.PI / 2, esquivar: false },
     inicio: now(), ultimoTick: now(), estado: 'activa',
     bajas: 0, botin: [], xp: 0,
+    // Una sala jugable (cofre, trampa, santuario). Cuando la hay, el
+    // encuentro se gana cumpliendo su objetivo y no vaciando la sala.
+    sala: cfg.sala || null,
   }
   p.seguimiento = seguimientoDe(char, ESCALA_ARENA, nivelDeArena(falsaArena))
   lanzarOleada(p)
@@ -25458,8 +25533,22 @@ function tick(p) {
     p.enemigos = p.enemigos.filter(en => !en.muerto)
   }
 
+  // Salas jugables: los peligros disparan y el objetivo avanza. Va
+  // aquí, después de mover proyectiles, para que un dardo recién
+  // lanzado no atraviese medio mapa en su primer tick.
+  if (p.sala && p.estado === 'activa') {
+    pasoPeligros(p, ahora)
+    const finSala = pasoObjetivo(p, ahora, dt)
+    if (finSala) return finSala
+  }
+
   // Fin de oleada / de arena
-  if (!p.enemigos.length && p.estado === 'activa') {
+  //
+  // Una sala jugable se gana por el objetivo, no por vaciarla: sin este
+  // `!p.sala` un pasillo de trampas —que no tiene un solo enemigo— se
+  // daría por ganado en el primer tick, antes de que al jugador le diera
+  // tiempo a moverse.
+  if (!p.enemigos.length && p.estado === 'activa' && !p.sala) {
     p.oleada++
     if (p.oleada >= p.arena.oleadas.length) return terminar(p, 'victoria')
     lanzarOleada(p)
@@ -25625,6 +25714,26 @@ function resumen(p) {
       dir: lado(p.jugador.mirando),
       esquivando: ahora < p.jugador.esquivarHasta,
     },
+    // La sala, cuando la hay. El cliente necesita saber a dónde ir,
+    // cuánto lleva aguantando y dónde están los emisores para poder
+    // pintar el aviso antes del dardo: sin el aviso dibujado, la
+    // telegrafía del servidor no sirve de nada.
+    sala: p.sala ? {
+      tipo: p.sala.tipo, nombre: p.sala.nombre,
+      objetivo: {
+        x: p.sala.objetivo.x, y: p.sala.objetivo.y, radio: p.sala.objetivo.radio,
+        icono: p.sala.objetivo.icono, etiqueta: p.sala.objetivo.etiqueta,
+        progreso: Math.min(1, (p.sala.objetivo.progreso || 0) / p.sala.objetivo.usarMs),
+        hecho: !!p.sala.objetivo.hecho,
+      },
+      peligros: p.sala.peligros.map(h => ({
+        id: h.id, x: Math.round(h.x), y: Math.round(h.y), ang: Number(h.ang.toFixed(2)),
+        // Cuánto queda para lo siguiente y si lo siguiente es un
+        // disparo. Con esto la pantalla puede pintar la cuenta atrás.
+        avisando: h.avisando, restanteMs: Math.max(0, h.prox - ahora),
+      })),
+    } : null,
+
     // Restos: solo para dibujar. No tienen vida, no reciben golpes y no
     // cuentan para nada. El cliente los pinta apagándose.
     restos: (p.restos || []).map(r => ({
@@ -25699,6 +25808,173 @@ setInterval(() => {
     for (const c of clientes) wsSend(c, mensaje)
   }
 }, ARENA_TICK_MS).unref?.()
+
+
+// ═══════════════════════════════════════════════════════════════════
+//  SALAS JUGABLES DE MAZMORRA
+//
+//  Vive aparte de 58-arena.js porque son dos cosas distintas: allí está
+//  la simulación de combate —moverse, pegar, recibir, morir— y aquí
+//  está cómo se monta una sala que se gana sin matar a nadie. El motor
+//  no necesita saber qué es un cofre, y una sala no necesita saber cómo
+//  se resuelve un empujón.
+//
+//  (También es lo que pide la prueba de compilación: ningún módulo pasa
+//  de 70 KB, y el criterio de ese límite está escrito en la propia
+//  prueba — si un archivo se pasa, probablemente mezcla dos cosas.)
+// ═══════════════════════════════════════════════════════════════════
+
+// ═══════════════════════════════════════════════════════════════════
+//  SALAS JUGABLES: un encuentro cuyo objetivo no es matar a nadie
+//
+//  Las salas de cofre, trampa y santuario de las mazmorras eran una
+//  tirada instantánea: `Math.random()` decidía si el cofre estaba
+//  trampeado, `Math.random()` contra la agilidad decidía si los dardos
+//  te daban, y el santuario sumaba vida y avanzaba. Pulsar la sala y
+//  leer el resultado era todo el juego que había.
+//
+//  El motor para que fueran jugables ya estaba aquí: proyectiles con
+//  barrido, telegrafía, esquiva, empuje. Lo único que faltaba era poder
+//  decir que un encuentro se gana haciendo algo que no es vaciar la
+//  sala de enemigos.
+//
+//  Eso son estas dos piezas:
+//    objetivo  un sitio al que ir y en el que aguantar un rato
+//    peligros  emisores fijos que avisan y disparan en ciclo
+//
+//  La recompensa de la sala viaja por donde ya viajaba todo: el botín
+//  se mete en `p.botin` y la curación en la vida del jugador, así que
+//  `resultadoCombateMazmorra` la recoge sin enterarse de que la sala
+//  era distinta.
+// ═══════════════════════════════════════════════════════════════════
+
+// El progreso se pierde más despacio de lo que se gana. Si se perdiera
+// al mismo ritmo, apartarse un instante de la trampa costaría todo lo
+// avanzado y la sala sería un examen de no moverse, que es justo lo
+// contrario de lo que se busca.
+const SALA_DECAIMIENTO = 0.55
+
+function salaDeMazmorra(tipo, opciones) {
+  const o = opciones || {}
+  const cx = ARENA_ANCHO / 2
+  if (tipo === 'cofre') {
+    const cofre = { x: cx, y: 170 }
+    // Cuatro lanzadores en cruz alrededor del cofre, disparando a través
+    // de él. Forzar la cerradura obliga a estarse quieto encima; los
+    // dardos obligan a apartarse. La sala es ese tira y afloja, y por eso
+    // solo aparecen si el cofre está trampeado: si no lo está, es un
+    // cofre y ya.
+    const peligros = o.trampeado ? [
+      { x: cofre.x - 250, y: cofre.y, ang: 0 },
+      { x: cofre.x + 250, y: cofre.y, ang: Math.PI },
+      { x: cofre.x, y: cofre.y - 130, ang: Math.PI / 2 },
+      { x: cofre.x, y: cofre.y + 130, ang: -Math.PI / 2 },
+    ] : []
+    return {
+      tipo, nombre: o.nombre || 'Cámara del tesoro',
+      objetivo: { ...cofre, radio: 46, usarMs: 1600, icono: '📦', etiqueta: 'Forzar el cofre' },
+      // Escalonados para que no lleguen los cuatro a la vez: así hay
+      // huecos en los que sí se puede estar encima del cofre.
+      peligros: peligros.map((h, i) => crearPeligro(h, { cadaMs: 1500, avisoMs: 520, retraso: i * 375, dmgFrac: 0.07 })),
+      recompensa: { botin: o.botin || [] },
+    }
+  }
+  if (tipo === 'trampa') {
+    // Pasillo: se entra por abajo y se sale por arriba. Tres filas de
+    // lanzadores con fases distintas, para que cruzar sea cuestión de
+    // elegir el momento y no de correr en línea recta.
+    const filas = [
+      { y: 430, izq: true,  retraso: 0 },
+      { y: 300, izq: false, retraso: 500 },
+      { y: 175, izq: true,  retraso: 1000 },
+    ]
+    const peligros = []
+    for (const f of filas) {
+      for (let k = 0; k < 2; k++) {
+        peligros.push(crearPeligro(
+          { x: f.izq ? 40 : ARENA_ANCHO - 40, y: f.y + (k === 0 ? -34 : 34), ang: f.izq ? 0 : Math.PI },
+          { cadaMs: 1700, avisoMs: 480, retraso: f.retraso + k * 260, dmgFrac: o.dmgFrac || 0.12, vel: 330 }))
+      }
+    }
+    return {
+      tipo, nombre: o.nombre || 'Pasillo trampeado',
+      objetivo: { x: cx, y: 80, radio: 64, usarMs: 400, icono: '🚪', etiqueta: 'Llegar a la salida' },
+      peligros,
+      recompensa: { botin: o.botin || [] },
+    }
+  }
+  // Santuario. Es la sala sin peligro a propósito: en una mazmorra
+  // donde todo lo demás te quita vida, el sitio donde se recupera es el
+  // descanso. Lo que cambia respecto a antes es que hay que ir hasta la
+  // fuente y quedarse: la vida ya no aparece por pulsar un botón.
+  return {
+    tipo: 'santuario', nombre: o.nombre || 'Santuario',
+    objetivo: { x: cx, y: 300, radio: 72, usarMs: 2200, icono: '⛲', etiqueta: 'Beber del santuario' },
+    peligros: [],
+    recompensa: { cura: o.cura || 0.35, botin: o.botin || [] },
+  }
+}
+
+function crearPeligro(base, cfg) {
+  return {
+    id: nextId('pel'),
+    x: base.x, y: base.y, ang: base.ang,
+    cadaMs: cfg.cadaMs || 1500,
+    avisoMs: cfg.avisoMs || 500,
+    vel: cfg.vel || 300,
+    dmgFrac: cfg.dmgFrac || 0.08,
+    // El primer disparo se retrasa para escalonar el ciclo. Sin esto
+    // todos los emisores de la sala disparan a la vez y no hay hueco
+    // por el que pasar.
+    prox: now() + (cfg.retraso || 0) + (cfg.avisoMs || 500),
+    avisando: true,
+  }
+}
+
+// Ciclo de un emisor: avisa, y al acabar el aviso dispara. El aviso NO
+// es decoración: es el tiempo que tiene el jugador para leerlo y
+// apartarse, igual que el telegrafiado de un enemigo.
+function pasoPeligros(p, ahora) {
+  for (const h of p.sala.peligros) {
+    if (ahora < h.prox) continue
+    if (h.avisando) {
+      h.avisando = false
+      p.proyectiles.push(crearProyectil({
+        dueño: 'enemigo', x: h.x, y: h.y, dir: h.ang,
+        vel: h.vel, radio: 7,
+        dmg: Math.max(1, Math.round(p.jugador.hpMax * h.dmgFrac)),
+        empuje: 70, vidaMs: 3000,
+      }))
+      p.sucesos.push({ t: 'peligro', id: h.id, x: Math.round(h.x), y: Math.round(h.y) })
+      h.prox = ahora + h.cadaMs
+    } else {
+      h.avisando = true
+      p.sucesos.push({ t: 'aviso_peligro', id: h.id, ms: h.avisoMs })
+      h.prox = ahora + h.avisoMs
+    }
+  }
+}
+
+function pasoObjetivo(p, ahora, dt) {
+  const o = p.sala.objetivo
+  if (o.hecho) return null
+  const j = p.jugador
+  const dentro = Math.hypot(j.x - o.x, j.y - o.y) <= o.radio
+  if (dentro) o.progreso = Math.min(o.usarMs, (o.progreso || 0) + dt * 1000)
+  else o.progreso = Math.max(0, (o.progreso || 0) - dt * 1000 * SALA_DECAIMIENTO)
+  if (o.progreso < o.usarMs) return null
+
+  o.hecho = true
+  const r = p.sala.recompensa || {}
+  for (const b of r.botin || []) p.botin.push({ itemId: b.itemId, quantity: b.quantity })
+  if (r.cura) {
+    const antes = j.hp
+    j.hp = Math.min(j.hpMax, j.hp + Math.round(j.hpMax * r.cura))
+    p.sucesos.push({ t: 'cura', dmg: Math.round(j.hp - antes), x: j.x, y: j.y })
+  }
+  p.sucesos.push({ t: 'sala_hecha', tipo: p.sala.tipo })
+  return terminar(p, 'victoria')
+}
 
 
 // ═══════════════════════════════════════════════════════════════════
@@ -25807,6 +26083,10 @@ function estadoRun(run) {
     id: run.id, mazmorra: run.mz.id, nombre: run.mz.nombre, icono: run.mz.icono,
     piso: run.piso + 1, pisos: run.mz.pisos,
     opciones, enCombate: run.enCombate,
+    // Qué sala se está jugando ahora mismo. Sin esto la pantalla solo
+    // sabe "hay algo en curso" y tiene que llamarlo combate, aunque lo
+    // que haya delante sea un cofre o una fuente.
+    salaEnCurso: run.enCombate && run.salaActual ? run.salaActual.tipo : null,
     acumulado: {
       xp: run.xp, bajas: run.bajas,
       botin: run.botin.map(b => ({ ...b, nombre: template(b.itemId).name, icono: template(b.itemId).icon })),
@@ -25868,40 +26148,43 @@ function elegirSala(player, salaId) {
     return { combate: true, run: estadoRun(run), partida: r.partida }
   }
 
-  if (sala.tipo === 'cofre') {
-    if (sala.trampeado) {
-      const esquiva = Math.random() < Math.min(0.6, effectiveStats(char).agility / 120)
-      if (!esquiva) {
-        const daño = Math.round(run.vidaMax * 0.15)
-        run.vidaActual = Math.max(1, run.vidaActual - daño)
-        run.registro.push(`🪤 El cofre estaba trampeado: pierdes ${daño} de vida.`)
-      } else {
-        run.registro.push('🤸 El cofre estaba trampeado, pero lo esquivaste.')
-      }
-    }
-    const cantidad = 1 + Math.floor(Math.random() * 2)
-    run.botin.push({ itemId: sala.objeto, quantity: cantidad })
-    run.registro.push(`📦 Encuentras ${template(sala.objeto).name} ×${cantidad}.`)
-  } else if (sala.tipo === 'trampa') {
-    const esquiva = Math.random() < Math.min(0.7, effectiveStats(char).agility / 100)
-    if (esquiva) run.registro.push('🤸 Cruzas el pasillo sin activar nada.')
-    else {
-      const daño = Math.round(run.vidaMax * sala.daño)
-      run.vidaActual = Math.max(1, run.vidaActual - daño)
-      run.registro.push(`🪤 Los dardos te alcanzan: ${daño} de vida.`)
-    }
-    if (sala.objeto) {
-      run.botin.push({ itemId: sala.objeto, quantity: 1 })
-      run.registro.push(`Entre los restos hay ${template(sala.objeto).name}.`)
-    }
-  } else if (sala.tipo === 'santuario') {
-    const cura = Math.round(run.vidaMax * sala.cura)
-    run.vidaActual = Math.min(run.vidaMax, run.vidaActual + cura)
-    run.registro.push(`⛲ Bebes del santuario: +${cura} de vida.`)
-  }
-
+  // Cofre, trampa y santuario: también se juegan.
+  //
+  // Antes esto era una tirada instantánea. `Math.random()` decidía si el
+  // cofre estaba trampeado, `Math.random()` contra la agilidad decidía
+  // si los dardos te daban, y el santuario sumaba vida y avanzaba. El
+  // jugador pulsaba una sala y leía el resultado: no había nada que
+  // hacer bien ni mal.
+  //
+  // Ahora las tres abren una sala en el mismo motor de arena que ya
+  // usaban las de combate, con un objetivo que no es matar: ir a un
+  // sitio y aguantar. Los dardos avisan antes de salir y se esquivan
+  // moviéndose, que es lo que pedía la FASE 15.
+  //
+  // Lo que NO cambia: el botín que da cada sala, la curación del
+  // santuario y el daño que puede costar una trampa. Los números
+  // siguen siendo los de antes; lo que cambia es que ahora dependen de
+  // lo que haga el jugador y no de un dado.
+  const cfgSala = salaDeMazmorra(sala.tipo, {
+    nombre: sala.nombre,
+    trampeado: !!sala.trampeado,
+    dmgFrac: sala.daño,
+    cura: sala.cura,
+    botin: sala.objeto ? [{ itemId: sala.objeto, quantity: 1 + Math.floor(Math.random() * 2) }] : [],
+  })
+  const rs = iniciarEncuentro(player, {
+    oleadas: [[]],
+    nombre: `${run.mz.nombre} · ${sala.nombre}`,
+    origen: 'mazmorra', runId: run.id, vidaInicial: run.vidaActual,
+    nivelBase: char.level,
+    sala: cfgSala,
+  })
+  if (rs.error) return rs
+  run.enCombate = true
+  run.salaActual = sala
   sala.hecha = true
-  return avanzarPiso(player, run)
+  run.registro.push(`${sala.icono} ${sala.nombre}: ${cfgSala.objetivo.etiqueta}.`)
+  return { combate: true, sala: sala.tipo, run: estadoRun(run), partida: rs.partida }
 }
 
 function avanzarPiso(player, run) {

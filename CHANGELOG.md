@@ -4,6 +4,60 @@ Cada versión con lo que la motivó. Los detalles completos están en `docs/CAMB
 
 ## v32 (en curso) — El mundo deja de pelear consigo mismo
 
+### Tres de las seis salas de mazmorra no se jugaban
+
+El combate de las mazmorras era real desde hacía versiones: las salas de
+guardia, guardián y jefe usan el motor de arena. Las otras tres eran una
+tirada instantánea. `Math.random()` decidía si el cofre estaba trampeado,
+`Math.random()` contra la agilidad decidía si los dardos te daban, y el
+santuario sumaba vida y avanzaba de piso. El jugador pulsaba una sala y
+leía el resultado; no había nada que hacer bien ni mal.
+
+Lo llamativo es que el motor para que fueran jugables ya estaba. Había
+proyectiles con barrido, telegrafía, esquiva y empuje. Lo único que
+faltaba era poder decir que un encuentro se gana haciendo algo que no es
+vaciar la sala de enemigos.
+
+Eso son dos piezas: un objetivo, que es un sitio al que ir y en el que
+aguantar, y unos peligros, que son emisores fijos que avisan y disparan
+en ciclo. Con eso:
+
+- **El cofre** hay que forzarlo. Si está trampeado, cuatro emisores en
+  cruz disparan a través de él, escalonados para que haya huecos. La
+  sala es ese tira y afloja entre estarse quieto y apartarse.
+- **El pasillo** hay que cruzarlo. Tres filas de dardos con fases
+  distintas, para que pasar sea elegir el momento y no correr en línea
+  recta. El sitio donde apareces queda por debajo de todas las filas a
+  propósito: el daño llega por meterse en la trayectoria, no por
+  existir.
+- **El santuario** hay que alcanzarlo y beber. Es la sala sin peligro a
+  propósito: en una mazmorra donde todo lo demás te quita vida, el sitio
+  donde se recupera es el descanso.
+
+Los números no se han tocado. El botín que da cada sala, el 35 % del
+santuario y el daño que puede costar una trampa son los de antes. Lo que
+cambia es de qué dependen.
+
+El botín y la curación viajan por donde ya viajaba todo lo demás: el
+botín se mete en la lista de la partida y la curación en la vida del
+jugador, así que la mazmorra los recoge al cerrar la sala sin enterarse
+de que esa sala era distinta.
+
+### Otra prueba que fallaba una de cada veinte veces
+
+`test-seguridad` daba dos golpes a una araña y exigía que el segundo le
+quitara vida, para demostrar que la vida del enemigo sale de la batalla
+guardada en el servidor y no de lo que mande el cliente. Un ataque falla
+el 5 % de las veces. Cuando fallaba, la vida se quedaba igual y la prueba
+daba en rojo sin que hubiera nada roto.
+
+Es el tercer caso de la misma familia en este proyecto, después de
+`test-turnos` y `test-contenido`: una prueba que observa algo que el
+servidor decide con un dado tiene que insistir hasta verlo, con un
+presupuesto medido, o no exigirlo. Ahora insiste hasta seis veces y el
+mensaje de fallo dice la vida de antes, la de después y cuántos golpes
+hicieron falta.
+
 ### Rozar a un enemigo costaba el golpe entero
 
 En la arena, `radio` hacía tres trabajos a la vez: separar cuerpos para
