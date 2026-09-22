@@ -4,6 +4,60 @@ Cada versión con lo que la motivó. Los detalles completos están en `docs/CAMB
 
 ## v32 (en curso) — El mundo deja de pelear consigo mismo
 
+### La regla principal del proyecto, comprobada en los 38 endpoints
+
+La regla de la FASE 1 es una sola y vale para todo el juego: el servidor
+decide el daño, la vida, la experiencia, el botín, el oro, el precio, el
+resultado del combate, los enfriamientos y el resultado del PvP. El
+cliente manda intenciones.
+
+Eso se comprobaba en un puñado de sitios sueltos. Ahora se comprueba en
+los treinta y ocho endpoints POST que tiene el servidor, y de la forma
+más desagradable posible: a cada uno se le manda un cuerpo con todos los
+campos de resultado que se le ocurrirían a alguien con la consola abierta
+—oro, experiencia, nivel, vida, daño, botín, precio, enfriamiento,
+resultado, rating— con valores absurdos. Después se mira si algo pegó.
+
+La comprobación no podía ser "nada cambió", porque hay endpoints que SÍ
+deben cambiar el oro o la experiencia. Lo que se exige es que los valores
+INYECTADOS no aparezcan: que el oro no se dispare, que el nivel no salte
+a 99, que la vida no pase de su tope, que el rating no lo ponga el
+cliente, y que ninguno de los tres objetos marcadores —de los caros del
+catálogo, para que no puedan llegar por otra vía— acabe en la mochila.
+
+Además hay cuatro comprobaciones sobre el código mismo: que el servidor
+no lea el daño, ni el oro, ni la experiencia, ni el botín, ni el precio
+del cuerpo de la petición.
+
+No pegó ninguno. Y para saber que la prueba sirve de algo, se le abrió un
+agujero a propósito: un endpoint que sumara el oro que le mandaran. Saltó
+por dos sitios a la vez, el de la cifra y el del código.
+
+Hay un detalle que importa: la prueba exige que la mayoría de las
+peticiones ENTREN en la lógica en vez de morir en el router. Sin eso, si
+todo contestara 404 pasaría en verde habiendo comprobado exactamente
+nada.
+
+### Dos intermitentes más, la quinta y la sexta de la misma familia
+
+Paralelizar la suite las sacó a la luz, porque con la máquina cargada los
+tiempos se estiran y lo que dependía de la suerte deja de salir.
+
+`test-mazmorra-jefe` exigía ver los DOS avisos de cambio de fase. Los
+sucesos de la arena viven un solo tick —`tick()` empieza vaciando la
+lista— así que cada respuesta trae solo lo del último paso; con la
+máquina cargada alguno se pierde. Eso no es un fallo del jefe: es cómo
+funciona el canal, y por el socket llegan todos. Lo que importa ya se
+comprobaba contra el ESTADO y no contra los avisos —las fases suben, en
+orden, con sus emisores y sus refuerzos—, así que basta con ver un aviso
+para saber que el mecanismo existe.
+
+`test-mundo-combate` daba tres turnos fijos esperando el golpe anunciado
+del murciélago. El enemigo lo anuncia cada tres turnos suyos y el
+murciélago se muere en cuatro golpes, o en tres si cae un crítico: la
+ventana era justa. Ahora insiste hasta verlo y vuelve a empezar si el
+bicho se muere antes, con un presupuesto medido.
+
 ### Catorce de las quince pantallas no tenían quien las ejecutara
 
 Solo la arena tenía una prueba que EJECUTARA su código. Las demás se

@@ -220,9 +220,25 @@ async function run() {
   // `telegraph.name`, y leyéndolo como `telegraph.nombre` no salía nunca:
   // la mecánica existía, estaba probada en el servidor y el jugador no
   // la veía.
-  for (let t = 0; t < 3; t++) { await sleep(380); await ventana.combatAction('attack') }
+  // Se insiste hasta VERLO, y se vuelve a empezar si el bicho muere
+  // antes de anunciar nada.
+  //
+  // Antes eran tres turnos fijos. El enemigo anuncia su golpe cada tres
+  // turnos suyos, y el murciélago se muere en cuatro golpes —en tres si
+  // cae un crítico—, así que la ventana era justa y una de cada tantas
+  // ejecuciones terminaba la pelea sin haber visto el aviso. En rojo sin
+  // que hubiera nada roto: la cuarta vez que este repositorio tropieza
+  // con lo mismo.
+  let turnos = 0
+  const nuevoMurcielago = () => ({ servidor: 'm_bat', sprite: '🦇', name: 'Murciélago Oscuro', level: 4, index: 0 })
+  while (!anotado.some(m => /prepara/i.test(m)) && turnos++ < 40) {
+    if (!ventana.activeCombat) { ventana.activeCombat = nuevoMurcielago(); ventana.sincronizado = false }
+    await sleep(380)
+    await ventana.combatAction('attack')
+  }
   ok('el aviso de golpe fuerte llega a la pantalla',
-     anotado.some(m => /prepara/i.test(m)), anotado.slice(-4).join(' | ').slice(0, 120))
+     anotado.some(m => /prepara/i.test(m)), `tras ${turnos} turnos · ` + anotado.slice(-3).join(' | ').slice(0, 110))
+  if (!ventana.activeCombat) { ventana.activeCombat = nuevoMurcielago(); ventana.sincronizado = false }
 
   // Y hasta matarlo: el oro tiene que subir EN EL SERVIDOR, no en PLAYER.
   let vueltas = 0
