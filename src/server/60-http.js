@@ -407,6 +407,11 @@ async function handleAPI(req, res, pathname, query) {
       newMonsterHp: r.fled ? battle.enemyHp : (r.enemyDied ? 0 : battle.enemyHp),
       enemyMaxHp: battle.enemyMaxHp,
       enemyDied: !!r.enemyDied, playerDied: !!r.playerDied, fled: !!r.fled,
+      // Con cuánta vida se queda el enemigo después de matarte. La barra
+      // SUBE en ese momento —se cura medio depósito— y un cambio de
+      // estado sin explicación se lee como un fallo. Viaja para que la
+      // pantalla pueda decirlo con palabras.
+      enemyHpTrasMorir: r.enemyHpTrasMorir || 0,
       goldEarned: r.rewards?.gold || 0, xpEarned: r.rewards?.xp || 0, cgridEarned: r.rewards?.cgrid || 0,
       loot: r.rewards?.loot || [], goldLost: r.goldLost || 0,
       levelUps: r.levelUps || [], newLevel: char.level, newXpToNext: char.xpToNext,

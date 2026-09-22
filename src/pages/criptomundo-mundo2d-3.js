@@ -172,6 +172,12 @@ function quitarEnemigoDelMapa() {
 
 async function alMorir(d) {
   addCombatLog('☠️ Has sido derrotado. Pierdes ' + (d.goldLost || 0) + ' oro.', 'miss')
+  // El enemigo se cura medio depósito, no vuelve a estar entero. Si no se
+  // dice, el jugador que vuelva a por él ve una barra más llena que cuando
+  // lo dejó y no sabe si le ha pasado algo raro.
+  if (d.enemyHpTrasMorir) {
+    addCombatLog('🩹 Sigue herido: le quedan ' + d.enemyHpTrasMorir + '. Tu avance no se ha borrado.', 'miss')
+  }
   addLog('☠️ Derrotado. Vuelves al Pueblo (-' + (d.goldLost || 0) + ' 🪙)', 'combat')
   // El servidor ya dejó la vida al 50 %; respawn solo lo confirma y
   // devuelve las cifras buenas.

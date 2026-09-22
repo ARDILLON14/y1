@@ -26,6 +26,8 @@ Fecha: 2026-09-21 · Base auditada: commit de importación del zip `criptomundo-
 > - §5.4 faltaba el flujo de objetos y el volumen de mercado — **STEP 10**
 > - §5.5 **este apartado estaba MAL**, corregido en el **STEP 10**
 > - §3.4 el jefe no tenía mecánica propia — **STEP 11** (ya completo)
+> - §0 el ruido del arranque (3 a 6 muertes para lo mismo) — **STEP 12**
+> - §0 `test-movimiento` intermitente, y un fallo real detrás — **STEP 12**
 
 Este documento es el resultado de la FASE 0. **No se ha modificado ni una
 línea de gameplay.** Todo lo que sigue está comprobado contra el código o
@@ -97,6 +99,26 @@ prueba. Midiendo después el camino a nivel 3, salió lo mismo y peor:
  77 ataques ·  6 arañas · 13 muertes
 110 ataques ·  6 arañas · 21 muertes
 ```
+
+> ✅ **Resuelto en el STEP 12, y no bajando la dificultad.** La causa
+> del ruido estaba a la vista y no era el balance: al morir se BORRABA
+> la batalla, así que el siguiente intento empezaba contra un bicho
+> intacto y toda la vida que le habías quitado se iba a la basura.
+> Medido con un guion fijo, seis vueltas de nivel 1 a nivel 3:
+>
+> | | Antes | Después |
+> |---|---|---|
+> | Daño tirado a la basura | 41 % | 7 % |
+> | Ataques para llegar a nivel 3 | 40–59 | 36–53 |
+> | Muertes | 3–6 (media 4,2) | 2–5 (media 3,3) |
+>
+> El enemigo se cura ahora media vida MÁXIMA y se queda donde estaba.
+> Que la cura sea una fracción del máximo es lo que cierra el agujero
+> evidente: si se guardara la herida tal cual, un nivel 1 mataría a un
+> dragón muriendo cuarenta veces. Comprobado: 120 ataques y 37 muertes
+> de un nivel 1 contra un dragón no lo bajan del 84 % de su vida.
+>
+> Lo medido debajo sigue siendo la foto de partida.
 
 Un jugador de nivel 1 muere entre una y tres veces y media POR CADA
 araña que mata. Las seis arañas son siempre las mismas porque la

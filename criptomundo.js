@@ -4530,6 +4530,12 @@ function quitarEnemigoDelMapa() {
 
 async function alMorir(d) {
   addCombatLog('☠️ Has sido derrotado. Pierdes ' + (d.goldLost || 0) + ' oro.', 'miss')
+  // El enemigo se cura medio depósito, no vuelve a estar entero. Si no se
+  // dice, el jugador que vuelva a por él ve una barra más llena que cuando
+  // lo dejó y no sabe si le ha pasado algo raro.
+  if (d.enemyHpTrasMorir) {
+    addCombatLog('🩹 Sigue herido: le quedan ' + d.enemyHpTrasMorir + '. Tu avance no se ha borrado.', 'miss')
+  }
   addLog('☠️ Derrotado. Vuelves al Pueblo (-' + (d.goldLost || 0) + ' 🪙)', 'combat')
   // El servidor ya dejó la vida al 50 %; respawn solo lo confirma y
   // devuelve las cifras buenas.
@@ -6999,6 +7005,14 @@ async function onDefeat(d) {
   STATE.over = true;
   clearTelegraph();
   addLog('☠️ Has caído. Pierdes ' + (d.goldLost || 0) + ' de oro.', 'enemy');
+  // El enemigo NO vuelve a estar intacto: se cura medio depósito y sigue
+  // herido donde lo dejaste. Hay que decirlo, porque lo que el jugador ve
+  // es que la barra del enemigo sube sola, y eso sin explicación parece
+  // un fallo del juego.
+  if (d.enemyHpTrasMorir) {
+    addLog('🩹 ' + esc(STATE.monster.name) + ' se recupera a medias, pero sigue herido: le quedan ' +
+      d.enemyHpTrasMorir + '. Tu avance no se ha borrado.', 'enemy');
+  }
   var me = await api('/api/player');
   if (me.ok) { STATE.char = me.data.character; renderChar(); }
   await sleep(400);
@@ -21480,6 +21494,26 @@ const ACTION_MIN_INTERVAL_MS = 350   // anti-bot / anti-macro básico
 // la vida era m.hp + 5% por nivel de ventaja y el daño iba tal cual.
 const ESCALA_TURNOS = { vida: 1.6, daño: 1.4, seguimiento: 1 }
 
+// Cuánta vida recupera el enemigo cuando te mata.
+//
+// Antes recuperaba TODA: al morir se borraba la batalla, así que el
+// siguiente intento empezaba contra un bicho intacto. Medido en el
+// arranque, eso tiraba a la basura el 41 % de todo el daño que hace un
+// jugador de nivel 1 camino del nivel 3, y hacía que el mismo camino
+// costara entre 40 y 59 ataques según la suerte. Ese factor no es
+// dificultad: es ruido. La misma acción cuesta cosas muy distintas por
+// motivos que el jugador no ve ni controla.
+//
+// La cura es una fracción de la vida MÁXIMA del enemigo, y esa elección
+// es la que cierra el agujero obvio. Si se guardara la herida tal cual,
+// un jugador de nivel 1 podría matar a un dragón muriendo cuarenta
+// veces, picándole de tres en tres. Curando medio depósito por muerte,
+// solo progresa quien le quita MÁS de medio depósito entre muerte y
+// muerte: contra un bicho de su nivel, sí; contra uno que le queda
+// grande, nunca. El límite se pone solo y no hace falta una tabla de
+// qué monstruo puede pelear cada quién.
+const CURA_AL_MORIR = 0.5
+
 function startBattle(char, monsterId) {
   const m = MONSTERS[monsterId]
   if (!m) return null
@@ -21803,7 +21837,23 @@ function combatAction(char, battle, action, skillId, itemId) {
     out.goldLost = lost
     audit('combat_loss', char.name, { monster: m.id, goldLost: lost })
     g.anota('BATTLE_END', { motivo: 'derrota', oroPerdido: lost, hpJugador: char.hp })
-    delete store.battles[battle.id]
+    // La pelea NO se borra. El enemigo se cura medio depósito y sigue
+    // ahí, herido, esperando. Lo que se pierde al morir es el oro, la
+    // vida y la mitad del avance de esa pelea; lo que ya NO se pierde es
+    // todo el avance.
+    battle.enemyHp = Math.min(battle.enemyMaxHp,
+                              battle.enemyHp + Math.round(battle.enemyMaxHp * CURA_AL_MORIR))
+    battle.state = 'ACTIVE'
+    // Se limpia lo que sí es del asalto perdido: el combo encadenado, el
+    // golpe que el enemigo tenía anunciado y los efectos en curso. Si el
+    // aviso sobreviviera, el primer turno del intento siguiente te
+    // comería un golpe pesado que se anunció en la vida anterior.
+    battle.combo = 0
+    battle.telegraph = null
+    battle.blocking = false
+    battle.buffs = []
+    battle.dots = []
+    out.enemyHpTrasMorir = battle.enemyHp
   }
   out.guion = g.fases
   out.duracion = g.total()
@@ -24597,6 +24647,9 @@ const ARENA_TICK_MS = 100
 const ACEL = 14          // 1/s: cuánto tarda en alcanzar la velocidad pedida
 const ROCE_IMPULSO = 6   // 1/s: cuánto tarda en apagarse un empujón
 const SEPARACION = 260   // px/s: con cuánta fuerza se despegan dos cuerpos
+// Cuánto se pasa de largo el guardia de centros, para que el redondeo
+// del estado que viaja al cliente no convierta un 15,05 en un 14,3.
+const MARGEN_CENTRO = 1.5
 
 // Fracción que sobrevive tras `dt` segundos con una caída de ritmo k.
 // Es lo que hace que la física no cambie porque un tick llegue tarde.
@@ -25588,12 +25641,16 @@ function tick(p) {
     // tres enemigos pegados, se iba solo por el mapa: 48 px de deriva
     // en doce segundos SIN tocar una tecla. Un empujón tiene que venir
     // de un golpe o de una embestida, no de que alguien te roce.
-    for (const en of vivos) separar(j, en, j.radio, en.cfg.radio, 14, 1)
+    // Bicho contra bicho PRIMERO, el jugador DESPUÉS. El orden importa:
+    // al revés, lo último que se resolvía en cada pasada era enemigo
+    // contra enemigo, y eso vuelve a empujar a uno de ellos contra el
+    // jugador.
     for (let i = 0; i < vivos.length; i++) {
       for (let k = i + 1; k < vivos.length; k++) {
         separar(vivos[i], vivos[k], vivos[i].cfg.radio, vivos[k].cfg.radio, 1, 1)
       }
     }
+    for (const en of vivos) separar(j, en, j.radio, en.cfg.radio, 14, 1)
   }
 
   // Las paredes cuentan desde el borde del cuerpo, no desde su centro:
@@ -25607,6 +25664,50 @@ function tick(p) {
     if (nx !== c.x) { c.vx = 0; c.ex = 0 }
     if (ny !== c.y) { c.vy = 0; c.ey = 0 }
     c.x = nx; c.y = ny
+  }
+
+  // Última palabra: NINGÚN enemigo acaba el tick con su centro dentro
+  // del cuerpo del jugador.
+  //
+  // Esto no es "por si acaso": estaba pasando. Medido forzando el caso
+  // —el jugador metido en una esquina con dos arañas encima— salía en 8
+  // de cada 1320 instantes. Es justo lo que test-movimiento declara que
+  // no puede pasar nunca, porque con los centros dentro ya no se sabe
+  // quién empuja a quién y el golpe se vuelve ambiguo.
+  //
+  // El motivo es que en una esquina el sistema está sobredeterminado: el
+  // jugador no puede ceder porque la pared se lo impide, y el hueco que
+  // debería absorber el enemigo se queda a medias. Subir las pasadas de
+  // separación de 3 a 8 lo bajaba a 2 de 1320 pero no lo quitaba: no era
+  // falta de iteraciones.
+  //
+  // Así que aquí, con las paredes ya aplicadas y nadie detrás que pueda
+  // deshacerlo, se saca al enemigo por donde haya sitio. Se prueba el eje
+  // que los separa y, si ese está contra la pared, los dos lados
+  // perpendiculares: moverse de lado también separa los centros.
+  for (const en of p.enemigos) {
+    if (en.muerto) continue
+    const dx = en.x - j.x, dy = en.y - j.y
+    const d = Math.hypot(dx, dy)
+    // El margen no es decoración. Las posiciones viajan REDONDEADAS al
+    // cliente, así que una distancia real de 15,05 puede llegar como
+    // 14,3 y leerse como una violación que en el servidor no existe.
+    // Empujando hasta 15 + margen, lo que se ve fuera también cumple.
+    if (d >= j.radio + MARGEN_CENTRO) continue
+    const ang = d > 0.01 ? Math.atan2(dy, dx) : Math.random() * Math.PI * 2
+    const falta = (j.radio + en.cfg.radio) - d
+    const r = en.cfg.radio
+    // El último candidato es hacia el centro del mapa, y está ahí porque
+    // los cuatro primeros no bastaban: con los dos cuerpos encajados en
+    // la MISMA esquina, las cuatro direcciones relativas al eje que los
+    // separa pueden estar las cuatro contra una pared. Hacia el centro
+    // siempre hay sitio. Quedaba 1 caso de 1320; con esto, ninguno.
+    const haciaCentro = Math.atan2(ARENA_ALTO / 2 - en.y, ARENA_ANCHO / 2 - en.x)
+    for (const a of [ang, ang + Math.PI / 2, ang - Math.PI / 2, ang + Math.PI, haciaCentro]) {
+      const px = limitar(en.x + Math.cos(a) * falta, r, ARENA_ANCHO - r)
+      const py = limitar(en.y + Math.sin(a) * falta, r, ARENA_ALTO - r)
+      if (Math.hypot(px - j.x, py - j.y) > d) { en.x = px; en.y = py; break }
+    }
   }
 
   // Proyectiles.
@@ -26963,6 +27064,11 @@ async function handleAPI(req, res, pathname, query) {
       newMonsterHp: r.fled ? battle.enemyHp : (r.enemyDied ? 0 : battle.enemyHp),
       enemyMaxHp: battle.enemyMaxHp,
       enemyDied: !!r.enemyDied, playerDied: !!r.playerDied, fled: !!r.fled,
+      // Con cuánta vida se queda el enemigo después de matarte. La barra
+      // SUBE en ese momento —se cura medio depósito— y un cambio de
+      // estado sin explicación se lee como un fallo. Viaja para que la
+      // pantalla pueda decirlo con palabras.
+      enemyHpTrasMorir: r.enemyHpTrasMorir || 0,
       goldEarned: r.rewards?.gold || 0, xpEarned: r.rewards?.xp || 0, cgridEarned: r.rewards?.cgrid || 0,
       loot: r.rewards?.loot || [], goldLost: r.goldLost || 0,
       levelUps: r.levelUps || [], newLevel: char.level, newXpToNext: char.xpToNext,

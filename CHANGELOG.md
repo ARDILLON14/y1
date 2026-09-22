@@ -4,6 +4,95 @@ Cada versión con lo que la motivó. Los detalles completos están en `docs/CAMB
 
 ## v32 (en curso) — El mundo deja de pelear consigo mismo
 
+### Un enemigo podía meterse dentro del jugador, y la prueba que lo vigilaba fallaba por otra cosa
+
+`test-movimiento` fallaba una de cada tres ejecuciones, y no siempre en
+el mismo sitio. Lo cómodo habría sido echarle la culpa a la carga de la
+máquina. Midiendo, resultó que había dos cosas distintas y una de ellas
+era un fallo de verdad.
+
+**La medida de velocidad estaba mal hecha.** Para comprobar que moverse
+en diagonal no corre más que en recto, se cogía el paso MÁS GRANDE de una
+tanda de pulsos. Pero el servidor integra por tiempo real, así que el
+tamaño de un paso depende de lo que tarde esa petición HTTP: coger el
+máximo era medir el jitter de la red. Salía recto=26,5 y diagonal=33,0, y
+la prueba daba en rojo sin que el juego tuviera nada. Midiendo píxeles por
+segundo reales —camino partido por tiempo transcurrido— la proporción sale
+entre 0,70 y 0,78, cinco veces seguidas.
+
+**La otra sí era un fallo.** El proyecto tiene escrito que lo que no puede
+pasar nunca es que el centro de un enemigo quede dentro del cuerpo del
+jugador: ahí ya no se sabe quién empuja a quién y el golpe se vuelve
+ambiguo. Pasaba. Forzando el caso —el jugador metido en una esquina con
+dos arañas encima— salía en 8 de cada 1320 instantes.
+
+Encontrarlo costó tres hipótesis y dos de ellas eran mías y estaban mal.
+No era falta de iteraciones: subir las pasadas de separación de 3 a 8 lo
+bajaba a 2 de 1320 sin quitarlo. Tampoco bastaba repartir de lado lo que
+no cabía. El motivo es que en una esquina el sistema está sobredeterminado:
+el jugador no puede ceder porque la pared se lo impide.
+
+Dos cambios lo arreglan. El orden dentro de cada pasada —bicho contra
+bicho primero y el jugador después, para que la última palabra la tenga la
+restricción que importa— y una comprobación final, ya con las paredes
+aplicadas y nadie detrás que pueda deshacerla, que saca al enemigo por
+donde haya sitio: el eje que los separa, los dos perpendiculares, o hacia
+el centro del mapa, que siempre lo tiene.
+
+Y un último detalle que costó una hipótesis de más: las posiciones viajan
+REDONDEADAS al cliente, así que una distancia real de 15,05 llega como
+14,3 y se lee como una violación que en el servidor no existe. Por eso el
+empujón se pasa de largo píxel y medio.
+
+Resultado: 0 de 3.960 instantes. Y la prueba ya no compara contra un
+número puesto a ojo sobre el estadístico más ruidoso que hay. Exige dos
+cosas separadas: que el solape habitual sea cero (mediana y p90 en 0,0) y
+que el máximo no pase de lo que el servidor garantiza.
+
+### Morir borraba todo lo que llevabas hecho en esa pelea
+
+La auditoría dejó escrito que llegar a nivel 3 costaba entre 47 y 110
+ataques según la suerte, y lo llamó por su nombre: eso no es dificultad,
+es ruido. La misma acción cuesta cosas muy distintas por motivos que el
+jugador no ve ni controla.
+
+La causa no estaba en el balance. Al morir se BORRABA la batalla, así que
+el siguiente intento empezaba contra un bicho intacto. Midiendo con un
+guion fijo, seis vueltas de nivel 1 a nivel 3: **el 41 % de todo el daño
+que hace el jugador se tiraba a la basura.** Uno de cada dos golpes que
+daba, no contaba para nada.
+
+Ahora el enemigo se cura media vida máxima y se queda donde estaba,
+herido. Lo que se pierde al morir sigue siendo el oro, la vida y la mitad
+del avance de esa pelea. Lo que ya no se pierde es todo.
+
+Que la cura sea una fracción del MÁXIMO no es un detalle: es lo que
+cierra el agujero evidente. Si se guardara la herida tal cual, un
+personaje de nivel 1 podría matar a un dragón muriendo cuarenta veces,
+picándole de tres en tres. Curando medio depósito por muerte, solo
+progresa quien le quita más de medio depósito entre muerte y muerte:
+contra un bicho de su nivel, sí; contra uno que le queda grande, nunca.
+El límite se pone solo, sin una tabla de qué monstruo puede pelear cada
+quién. Comprobado: 120 ataques y 37 muertes de un nivel 1 contra un
+dragón no lo bajan del 84 % de su vida.
+
+Las cifras del arranque, antes y después:
+
+| | Antes | Después |
+|---|---|---|
+| Daño tirado a la basura | 41 % | 7 % |
+| Ataques para llegar a nivel 3 | 40–59 | 36–53 |
+| Muertes | 3–6 | 2–5 |
+
+El juego queda algo más suave, y eso hay que decirlo: es la consecuencia
+inevitable de dejar de borrar trabajo hecho. Lo que se buscaba era la
+otra columna, la del ruido.
+
+Y una cosa que no es un detalle de implementación: al morir, la barra del
+enemigo SUBE. Un cambio de estado sin explicación se lee como un fallo
+del juego, así que tanto la pantalla de combate como el mapa lo dicen con
+palabras: sigue herido, tu avance no se ha borrado.
+
 ### El jefe de mazmorra peleaba igual en el primer segundo que en el último
 
 Era una oleada más: un bicho con más vida y un acompañante. La última

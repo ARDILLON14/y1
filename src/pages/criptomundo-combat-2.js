@@ -329,6 +329,14 @@ async function onDefeat(d) {
   STATE.over = true;
   clearTelegraph();
   addLog('☠️ Has caído. Pierdes ' + (d.goldLost || 0) + ' de oro.', 'enemy');
+  // El enemigo NO vuelve a estar intacto: se cura medio depósito y sigue
+  // herido donde lo dejaste. Hay que decirlo, porque lo que el jugador ve
+  // es que la barra del enemigo sube sola, y eso sin explicación parece
+  // un fallo del juego.
+  if (d.enemyHpTrasMorir) {
+    addLog('🩹 ' + esc(STATE.monster.name) + ' se recupera a medias, pero sigue herido: le quedan ' +
+      d.enemyHpTrasMorir + '. Tu avance no se ha borrado.', 'enemy');
+  }
   var me = await api('/api/player');
   if (me.ok) { STATE.char = me.data.character; renderChar(); }
   await sleep(400);

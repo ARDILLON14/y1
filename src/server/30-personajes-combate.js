@@ -551,6 +551,26 @@ const ACTION_MIN_INTERVAL_MS = 350   // anti-bot / anti-macro básico
 // la vida era m.hp + 5% por nivel de ventaja y el daño iba tal cual.
 const ESCALA_TURNOS = { vida: 1.6, daño: 1.4, seguimiento: 1 }
 
+// Cuánta vida recupera el enemigo cuando te mata.
+//
+// Antes recuperaba TODA: al morir se borraba la batalla, así que el
+// siguiente intento empezaba contra un bicho intacto. Medido en el
+// arranque, eso tiraba a la basura el 41 % de todo el daño que hace un
+// jugador de nivel 1 camino del nivel 3, y hacía que el mismo camino
+// costara entre 40 y 59 ataques según la suerte. Ese factor no es
+// dificultad: es ruido. La misma acción cuesta cosas muy distintas por
+// motivos que el jugador no ve ni controla.
+//
+// La cura es una fracción de la vida MÁXIMA del enemigo, y esa elección
+// es la que cierra el agujero obvio. Si se guardara la herida tal cual,
+// un jugador de nivel 1 podría matar a un dragón muriendo cuarenta
+// veces, picándole de tres en tres. Curando medio depósito por muerte,
+// solo progresa quien le quita MÁS de medio depósito entre muerte y
+// muerte: contra un bicho de su nivel, sí; contra uno que le queda
+// grande, nunca. El límite se pone solo y no hace falta una tabla de
+// qué monstruo puede pelear cada quién.
+const CURA_AL_MORIR = 0.5
+
 function startBattle(char, monsterId) {
   const m = MONSTERS[monsterId]
   if (!m) return null
@@ -874,7 +894,23 @@ function combatAction(char, battle, action, skillId, itemId) {
     out.goldLost = lost
     audit('combat_loss', char.name, { monster: m.id, goldLost: lost })
     g.anota('BATTLE_END', { motivo: 'derrota', oroPerdido: lost, hpJugador: char.hp })
-    delete store.battles[battle.id]
+    // La pelea NO se borra. El enemigo se cura medio depósito y sigue
+    // ahí, herido, esperando. Lo que se pierde al morir es el oro, la
+    // vida y la mitad del avance de esa pelea; lo que ya NO se pierde es
+    // todo el avance.
+    battle.enemyHp = Math.min(battle.enemyMaxHp,
+                              battle.enemyHp + Math.round(battle.enemyMaxHp * CURA_AL_MORIR))
+    battle.state = 'ACTIVE'
+    // Se limpia lo que sí es del asalto perdido: el combo encadenado, el
+    // golpe que el enemigo tenía anunciado y los efectos en curso. Si el
+    // aviso sobreviviera, el primer turno del intento siguiente te
+    // comería un golpe pesado que se anunció en la vida anterior.
+    battle.combo = 0
+    battle.telegraph = null
+    battle.blocking = false
+    battle.buffs = []
+    battle.dots = []
+    out.enemyHpTrasMorir = battle.enemyHp
   }
   out.guion = g.fases
   out.duracion = g.total()

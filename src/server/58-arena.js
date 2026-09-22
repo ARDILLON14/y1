@@ -48,6 +48,9 @@ const ARENA_TICK_MS = 100
 const ACEL = 14          // 1/s: cuánto tarda en alcanzar la velocidad pedida
 const ROCE_IMPULSO = 6   // 1/s: cuánto tarda en apagarse un empujón
 const SEPARACION = 260   // px/s: con cuánta fuerza se despegan dos cuerpos
+// Cuánto se pasa de largo el guardia de centros, para que el redondeo
+// del estado que viaja al cliente no convierta un 15,05 en un 14,3.
+const MARGEN_CENTRO = 1.5
 
 // Fracción que sobrevive tras `dt` segundos con una caída de ritmo k.
 // Es lo que hace que la física no cambie porque un tick llegue tarde.
@@ -1039,12 +1042,16 @@ function tick(p) {
     // tres enemigos pegados, se iba solo por el mapa: 48 px de deriva
     // en doce segundos SIN tocar una tecla. Un empujón tiene que venir
     // de un golpe o de una embestida, no de que alguien te roce.
-    for (const en of vivos) separar(j, en, j.radio, en.cfg.radio, 14, 1)
+    // Bicho contra bicho PRIMERO, el jugador DESPUÉS. El orden importa:
+    // al revés, lo último que se resolvía en cada pasada era enemigo
+    // contra enemigo, y eso vuelve a empujar a uno de ellos contra el
+    // jugador.
     for (let i = 0; i < vivos.length; i++) {
       for (let k = i + 1; k < vivos.length; k++) {
         separar(vivos[i], vivos[k], vivos[i].cfg.radio, vivos[k].cfg.radio, 1, 1)
       }
     }
+    for (const en of vivos) separar(j, en, j.radio, en.cfg.radio, 14, 1)
   }
 
   // Las paredes cuentan desde el borde del cuerpo, no desde su centro:
@@ -1058,6 +1065,50 @@ function tick(p) {
     if (nx !== c.x) { c.vx = 0; c.ex = 0 }
     if (ny !== c.y) { c.vy = 0; c.ey = 0 }
     c.x = nx; c.y = ny
+  }
+
+  // Última palabra: NINGÚN enemigo acaba el tick con su centro dentro
+  // del cuerpo del jugador.
+  //
+  // Esto no es "por si acaso": estaba pasando. Medido forzando el caso
+  // —el jugador metido en una esquina con dos arañas encima— salía en 8
+  // de cada 1320 instantes. Es justo lo que test-movimiento declara que
+  // no puede pasar nunca, porque con los centros dentro ya no se sabe
+  // quién empuja a quién y el golpe se vuelve ambiguo.
+  //
+  // El motivo es que en una esquina el sistema está sobredeterminado: el
+  // jugador no puede ceder porque la pared se lo impide, y el hueco que
+  // debería absorber el enemigo se queda a medias. Subir las pasadas de
+  // separación de 3 a 8 lo bajaba a 2 de 1320 pero no lo quitaba: no era
+  // falta de iteraciones.
+  //
+  // Así que aquí, con las paredes ya aplicadas y nadie detrás que pueda
+  // deshacerlo, se saca al enemigo por donde haya sitio. Se prueba el eje
+  // que los separa y, si ese está contra la pared, los dos lados
+  // perpendiculares: moverse de lado también separa los centros.
+  for (const en of p.enemigos) {
+    if (en.muerto) continue
+    const dx = en.x - j.x, dy = en.y - j.y
+    const d = Math.hypot(dx, dy)
+    // El margen no es decoración. Las posiciones viajan REDONDEADAS al
+    // cliente, así que una distancia real de 15,05 puede llegar como
+    // 14,3 y leerse como una violación que en el servidor no existe.
+    // Empujando hasta 15 + margen, lo que se ve fuera también cumple.
+    if (d >= j.radio + MARGEN_CENTRO) continue
+    const ang = d > 0.01 ? Math.atan2(dy, dx) : Math.random() * Math.PI * 2
+    const falta = (j.radio + en.cfg.radio) - d
+    const r = en.cfg.radio
+    // El último candidato es hacia el centro del mapa, y está ahí porque
+    // los cuatro primeros no bastaban: con los dos cuerpos encajados en
+    // la MISMA esquina, las cuatro direcciones relativas al eje que los
+    // separa pueden estar las cuatro contra una pared. Hacia el centro
+    // siempre hay sitio. Quedaba 1 caso de 1320; con esto, ninguno.
+    const haciaCentro = Math.atan2(ARENA_ALTO / 2 - en.y, ARENA_ANCHO / 2 - en.x)
+    for (const a of [ang, ang + Math.PI / 2, ang - Math.PI / 2, ang + Math.PI, haciaCentro]) {
+      const px = limitar(en.x + Math.cos(a) * falta, r, ARENA_ANCHO - r)
+      const py = limitar(en.y + Math.sin(a) * falta, r, ARENA_ALTO - r)
+      if (Math.hypot(px - j.x, py - j.y) > d) { en.x = px; en.y = py; break }
+    }
   }
 
   // Proyectiles.
