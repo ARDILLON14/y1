@@ -303,7 +303,7 @@ function createListing(char, itemId, quantity, pricePerUnit) {
   if (countItem(char, itemId) < qty) return { error: 'Ítems insuficientes', code: 400 }
   const mine = store.marketListings.filter(l => l.sellerId === char.id && l.status === 'ACTIVE').length
   if (mine >= 20) return { error: 'Máximo 20 publicaciones activas', code: 429 }
-  removeItem(char, itemId, qty)   // ESCROW: el objeto sale del inventario
+  removeItem(char, itemId, qty, 'mercado')   // ESCROW: el objeto sale del inventario
   const listing = {
     id: nextId('lst'), sellerId: char.id, seller: { name: char.name },
     itemId, quantity: qty, pricePerUnit: price, currency: 'gold',
@@ -333,7 +333,7 @@ function buyListing(char, listingId, quantity) {
   char.gold -= cost
   listing.quantity -= qty
   if (listing.quantity <= 0) listing.status = 'SOLD'
-  const added = addItem(char, listing.itemId, qty)
+  const added = addItem(char, listing.itemId, qty, 'mercado')
   if (!added) { char.gold += cost; listing.quantity += qty; listing.status = 'ACTIVE'; return { error: 'Inventario lleno', code: 400 } }
 
   const fee = Math.floor(cost * ECONOMY.MARKET_FEE)
@@ -361,7 +361,7 @@ function cancelListing(char, listingId) {
   if (l.sellerId !== char.id) return { error: 'No es tu publicación', code: 403 }
   if (l.status !== 'ACTIVE') return { error: 'No está activa', code: 409 }
   l.status = 'CANCELLED'
-  addItem(char, l.itemId, l.quantity)   // devuelve el escrow
+  addItem(char, l.itemId, l.quantity, 'mercado')   // devuelve el escrow
   audit('market_cancel', char.name, { listingId })
   persist()
   return { success: true }

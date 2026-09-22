@@ -1239,7 +1239,7 @@ function terminar(p, motivo) {
   // El botín de los enemigos derrotados se entrega aunque se pierda:
   // lo que ya mataste, ya lo mataste.
   for (const l of p.botin) {
-    if (addItem(char, l.itemId, l.quantity)) {
+    if (addItem(char, l.itemId, l.quantity, 'botin')) {
       botinFinal.push({ itemId: l.itemId, quantity: l.quantity, name: template(l.itemId).name,
         icon: template(l.itemId).icon, imagen: template(l.itemId).imagen || null })
     }

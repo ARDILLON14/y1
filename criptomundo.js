@@ -19506,8 +19506,12 @@ td.num{font-family:monospace;text-align:right}
 <div class="grid" id="cards"></div>
 <div class="sec">Oro creado vs quemado (14 días)</div>
 <table id="oro"></table>
+<div class="sec">Objetos creados vs destruidos (14 días)</div>
+<table id="objetos"></table>
 <div class="sec">Precios del mercado</div>
 <table id="mercado"></table>
+<div class="sec">Lo que de verdad se paga</div>
+<table id="pagados"></table>
 <div class="sec">Reglas de emisión de CGRID</div>
 <div class="card" id="reglas"></div>
 </div>
@@ -19523,6 +19527,9 @@ fetch('/api/economy/public').then(r=>r.json()).then(d=>{
     ['CGRID en circulación', n(d.cgrid.circulante)],
     ['CGRID emitido hoy', n(d.cgrid.emitidoHoy) + ' / ' + n(d.cgrid.topeDiarioGlobal)],
     ['Publicaciones activas', n(d.mercado.publicacionesActivas)],
+    ['Volumen del mercado', n(d.mercado.volumenTotal)],
+    ['Objetos creados hoy', n(d.objetos.creadosHoy)],
+    ['Objetos destruidos hoy', n(d.objetos.destruidosHoy)],
     ['Jugadores registrados', n(d.jugadores.registrados)],
     ['Activos hoy', n(d.jugadores.activosHoy)],
   ].map(([k,v])=>\`<div class="card"><div class="k">\${k}</div><div class="v">\${v}</div></div>\`).join('')
@@ -19536,11 +19543,32 @@ fetch('/api/economy/public').then(r=>r.json()).then(d=>{
           <div class="bar"><i style="width:\${x.quemado/max*100}%;background:#10B981"></i></div></td></tr>\`).join('')
     + '<tr><td colspan="5" class="tag">Barra dorada = oro creado (faucet) · Barra verde = oro destruido (sink). Si la dorada domina siempre, hay inflación.</td></tr>'
 
+  // Objetos: la otra mitad de la economía. El oro se ve porque es un
+  // número en la ficha; los objetos, no, y sin embargo son lo que hunde
+  // o sostiene los precios del mercado.
+  const maxO = Math.max(1, ...d.objetos.ultimos14dias.flatMap(x=>[x.creados,x.destruidos]))
+  document.getElementById('objetos').innerHTML =
+    '<tr><th>Día</th><th>Creados</th><th>Destruidos</th><th>Neto</th><th style="width:35%">Balance</th></tr>' +
+    d.objetos.ultimos14dias.map(x=>\`<tr><td>\${x.dia}</td><td class="num">\${n(x.creados)}</td><td class="num">\${n(x.destruidos)}</td>
+      <td class="num" style="color:\${x.creados-x.destruidos>0?'#EF4444':'#10B981'}">\${n(x.creados-x.destruidos)}</td>
+      <td><div class="bar"><i style="width:\${x.creados/maxO*100}%;background:#C8A84B"></i></div>
+          <div class="bar"><i style="width:\${x.destruidos/maxO*100}%;background:#10B981"></i></div></td></tr>\`).join('')
+    + '<tr><td colspan="5" class="tag">' + d.objetos.nota + ' Si la barra dorada domina siempre, cada vez hay más objetos persiguiendo el mismo oro y los precios caen.</td></tr>'
+
   document.getElementById('mercado').innerHTML =
     '<tr><th>Objeto</th><th>Rareza</th><th>Publicaciones</th><th>Mín</th><th>Medio</th><th>Máx</th></tr>' +
     (d.mercado.precios.length ? d.mercado.precios.map(x=>\`<tr><td>\${x.nombre}</td><td class="r-\${x.rareza}">\${x.rareza}</td>
       <td class="num">\${x.publicaciones}</td><td class="num">\${n(x.precioMin)}</td><td class="num">\${n(x.precioMedio)}</td><td class="num">\${n(x.precioMax)}</td></tr>\`).join('')
       : '<tr><td colspan="6" class="tag">Sin publicaciones activas.</td></tr>')
+
+  // Pedir y pagar no son lo mismo. La tabla de arriba dice a cuánto se
+  // publica; esta, a cuánto se vende de verdad. Un objeto que se publica
+  // caro y no se vende nunca solo se ve comparando las dos.
+  document.getElementById('pagados').innerHTML =
+    '<tr><th>Objeto</th><th>Ventas</th><th>Unidades</th><th>Precio medio pagado</th></tr>' +
+    (d.mercado.preciosPagados.length ? d.mercado.preciosPagados.slice(0,25).map(x=>\`<tr><td>\${x.nombre}</td>
+      <td class="num">\${n(x.ventas)}</td><td class="num">\${n(x.unidades)}</td><td class="num">\${n(x.precioMedioPagado)}</td></tr>\`).join('')
+      : '<tr><td colspan="4" class="tag">Todavía no se ha vendido nada.</td></tr>')
 
   document.getElementById('reglas').innerHTML =
     '<div class="tag">Fuentes de CGRID:</div><ul style="margin:6px 0 12px 18px;font-size:13px">' + d.cgrid.fuentes.map(f=>'<li>'+f+'</li>').join('') + '</ul>' +
@@ -21330,20 +21358,39 @@ function checkLevelUp(char) {
   return events
 }
 
-function addItem(char, itemId, quantity = 1) {
+// Los dos puntos de paso por los que entra y sale TODO objeto del juego.
+//
+// Por eso son también el único sitio donde se puede contar cuántos
+// objetos se crean y se destruyen sin que se escape ninguno. Contarlo en
+// cada sitio que reparte botín sería contar quince veces y olvidarse de
+// la decimosexta.
+//
+// `motivo` dice de dónde viene o a dónde va, y sirve para dos cosas: ver
+// qué grifo está abierto de más, y distinguir lo que de verdad se crea
+// de lo que solo CAMBIA DE MANOS. Comprar en el mercado no crea nada: el
+// objeto sale del escrow del vendedor y entra en la mochila del
+// comprador. Si eso contara como creación, el mercado parecería una
+// fábrica de objetos y las cifras mentirían justo donde más se miran.
+function addItem(char, itemId, quantity = 1, motivo = 'otro') {
   const t = template(itemId)
   if (!t) return null
   const stackable = ['MATERIAL', 'POTION', 'FOOD', 'SEED'].includes(t.type)
+  let dado = null
   if (stackable) {
     const ex = char.inventory.find(i => i.itemId === itemId && !char.equipment?.[i.uid])
-    if (ex) { ex.quantity += quantity; return ex }
+    if (ex) { ex.quantity += quantity; dado = ex }
   }
-  if (char.inventory.length >= 120) return null   // límite de mochila
-  const it = makeItem(itemId, quantity)
-  char.inventory.push(it)
-  return it
+  if (!dado) {
+    if (char.inventory.length >= 120) return null   // límite de mochila
+    dado = makeItem(itemId, quantity)
+    char.inventory.push(dado)
+  }
+  // Solo se cuenta lo que de verdad entró: si la mochila estaba llena,
+  // arriba ya se devolvió null y aquí no se llega.
+  if (typeof trackItems === 'function') trackItems('creado', itemId, quantity, motivo)
+  return dado
 }
-function removeItem(char, itemId, quantity) {
+function removeItem(char, itemId, quantity, motivo = 'otro') {
   let left = quantity
   for (const it of [...char.inventory]) {
     if (it.itemId !== itemId) continue
@@ -21353,6 +21400,9 @@ function removeItem(char, itemId, quantity) {
     if (it.quantity <= 0) char.inventory = char.inventory.filter(i => i.uid !== it.uid)
     if (left <= 0) break
   }
+  // Se cuenta lo que se quitó de verdad, no lo que se pidió quitar.
+  const quitado = quantity - left
+  if (quitado > 0 && typeof trackItems === 'function') trackItems('destruido', itemId, quitado, motivo)
   return left <= 0
 }
 function countItem(char, itemId) {
@@ -21570,7 +21620,7 @@ function combatAction(char, battle, action, skillId, itemId) {
     if (!plantilla) return { error: 'Ese objeto no se puede usar en combate', code: 400 }
     const tengo = (char.inventory || []).find(i => i.itemId === usar && i.quantity > 0)
     if (!tengo) return { error: 'No tienes ese objeto', code: 400 }
-    removeItem(char, usar, 1)
+    removeItem(char, usar, 1, 'consumo')
     playerHeal = plantilla.heal || 0
     if (plantilla.mana) char.mp = Math.min(maxMpDe(char), char.mp + plantilla.mana)
     if (plantilla.buff && typeof aplicarEfecto === 'function') aplicarEfecto(char, plantilla.buff)
@@ -21699,7 +21749,7 @@ function combatAction(char, battle, action, skillId, itemId) {
     const loot = rollLoot(battle.monsterId)
     const questUpdates = []
     for (const l of loot) {
-      addItem(char, l.itemId, l.quantity)
+      addItem(char, l.itemId, l.quantity, 'botin')
       // Las misiones de recolección avanzan con el botín real
       questUpdates.push(...emitProgress(char, `gather_${l.itemId}`, l.quantity))
     }
@@ -22239,7 +22289,7 @@ function createListing(char, itemId, quantity, pricePerUnit) {
   if (countItem(char, itemId) < qty) return { error: 'Ítems insuficientes', code: 400 }
   const mine = store.marketListings.filter(l => l.sellerId === char.id && l.status === 'ACTIVE').length
   if (mine >= 20) return { error: 'Máximo 20 publicaciones activas', code: 429 }
-  removeItem(char, itemId, qty)   // ESCROW: el objeto sale del inventario
+  removeItem(char, itemId, qty, 'mercado')   // ESCROW: el objeto sale del inventario
   const listing = {
     id: nextId('lst'), sellerId: char.id, seller: { name: char.name },
     itemId, quantity: qty, pricePerUnit: price, currency: 'gold',
@@ -22269,7 +22319,7 @@ function buyListing(char, listingId, quantity) {
   char.gold -= cost
   listing.quantity -= qty
   if (listing.quantity <= 0) listing.status = 'SOLD'
-  const added = addItem(char, listing.itemId, qty)
+  const added = addItem(char, listing.itemId, qty, 'mercado')
   if (!added) { char.gold += cost; listing.quantity += qty; listing.status = 'ACTIVE'; return { error: 'Inventario lleno', code: 400 } }
 
   const fee = Math.floor(cost * ECONOMY.MARKET_FEE)
@@ -22297,7 +22347,7 @@ function cancelListing(char, listingId) {
   if (l.sellerId !== char.id) return { error: 'No es tu publicación', code: 403 }
   if (l.status !== 'ACTIVE') return { error: 'No está activa', code: 409 }
   l.status = 'CANCELLED'
-  addItem(char, l.itemId, l.quantity)   // devuelve el escrow
+  addItem(char, l.itemId, l.quantity, 'mercado')   // devuelve el escrow
   audit('market_cancel', char.name, { listingId })
   persist()
   return { success: true }
@@ -22625,7 +22675,7 @@ function recolectar(char, nodoId) {
   for (const [itemId, min, max, prob] of nodo.sueltan) {
     if (Math.random() > prob) continue
     const cantidad = randInt(min, max)
-    if (!addItem(char, itemId, cantidad)) continue   // mochila llena
+    if (!addItem(char, itemId, cantidad, 'recoleccion')) continue   // mochila llena
     obtenido.push({ itemId, cantidad, nombre: template(itemId).name, icono: template(itemId).icon })
     questUpdates.push(...emitProgress(char, `gather_${itemId}`, cantidad))
   }
@@ -22701,7 +22751,7 @@ function sembrar(char, indice, semillaId) {
   char.huerto = char.huerto || []
   if (char.huerto[i] && char.huerto[i].semilla) return { error: 'Esa parcela ya está sembrada', code: 409 }
   if (countItem(char, semillaId) < 1) return { error: `No tienes ${c.nombre}`, code: 400 }
-  removeItem(char, semillaId, 1)
+  removeItem(char, semillaId, 1, 'siembra')
   char.huerto[i] = { semilla: semillaId, sembradoEn: now(), listoEn: now() + c.creceMs }
   audit('sembrar', char.name, { parcela: i, semilla: semillaId })
   persist()
@@ -22720,13 +22770,13 @@ function cosechar(char, indice) {
 
   const obtenido = []
   const cantidad = randInt(c.min, c.max)
-  if (addItem(char, c.produce, cantidad)) {
+  if (addItem(char, c.produce, cantidad, 'cosecha')) {
     obtenido.push({ itemId: c.produce, cantidad, nombre: template(c.produce).name, icono: template(c.produce).icon })
   }
   // Devolver semillas de vez en cuando evita que el huerto se agote
   if (c.extra && Math.random() < c.extra.prob) {
     const n = randInt(c.extra.min, c.extra.max)
-    if (addItem(char, c.extra.itemId, n)) {
+    if (addItem(char, c.extra.itemId, n, 'cosecha')) {
       obtenido.push({ itemId: c.extra.itemId, cantidad: n, nombre: CULTIVOS[c.extra.itemId].nombre, icono: CULTIVOS[c.extra.itemId].icono })
     }
   }
@@ -23124,7 +23174,7 @@ function golpearRecurso(char, nodoId, posicion, usuario) {
     for (const [itemId, min, max, prob] of n.tipo.suelta) {
       if (Math.random() > prob) continue
       const cantidad = randInt(min, max)
-      if (!addItem(char, itemId, cantidad)) continue      // mochila llena
+      if (!addItem(char, itemId, cantidad, 'recoleccion')) continue      // mochila llena
       const t = template(itemId)
       obtenido.push({ itemId, cantidad, nombre: t.name, icono: t.icon, rareza: t.rarity })
       questUpdates.push(...emitProgress(char, `gather_${itemId}`, cantidad))
@@ -23249,7 +23299,8 @@ function hourKey(d = new Date()) { return d.toISOString().slice(0, 13) }
 function dailyBucket(k = day()) {
   const a = store.analytics.daily
   if (!a[k]) {
-    a[k] = { newUsers: 0, activeUsers: [], events: {}, goldFaucet: 0, goldSink: 0, cgridMint: 0, sessions: 0, playMinutes: 0 }
+    a[k] = { newUsers: 0, activeUsers: [], events: {}, goldFaucet: 0, goldSink: 0, cgridMint: 0, sessions: 0, playMinutes: 0,
+             itemsCreados: 0, itemsDestruidos: 0, itemsPorMotivo: {} }
     const claves = Object.keys(a).sort()
     for (const vieja of claves.slice(0, Math.max(0, claves.length - DIAS_GUARDADOS))) delete a[vieja]
   }
@@ -23264,7 +23315,7 @@ const DIAS_GUARDADOS = 90
 function hourlyBucket(k = hourKey()) {
   const h = store.analytics.hourly
   if (!h[k]) {
-    h[k] = { goldFaucet: 0, goldSink: 0, cgridMint: 0, kills: 0, playMinutes: 0 }
+    h[k] = { goldFaucet: 0, goldSink: 0, cgridMint: 0, kills: 0, playMinutes: 0, itemsCreados: 0, itemsDestruidos: 0 }
     const claves = Object.keys(h).sort()
     for (const vieja of claves.slice(0, Math.max(0, claves.length - HORAS_GUARDADAS))) delete h[vieja]
   }
@@ -23325,6 +23376,33 @@ function trackCurrency(username, currency, amount, reason) {
     store.analytics.currencyLog.push({ at: Date.now(), username, currency, amount, reason })
     if (store.analytics.currencyLog.length > 5000) store.analytics.currencyLog.splice(0, 2500)
   } else store.analytics.currencyLog = []
+}
+
+// ── Flujo de objetos: cuántos entran y cuántos salen del juego ─────
+//
+// Faltaba de la lista de la FASE 18, y es la mitad que explica la otra.
+// El oro creado por hora ya se medía; sin saber cuántos objetos se
+// crean y se destruyen, un mercado con precios que bajan no se puede
+// distinguir de uno con demasiados jugadores vendiendo lo mismo.
+//
+// Lo llama addItem/removeItem, que son los dos puntos de paso por los
+// que entra y sale todo objeto del juego. Se quedan fuera dos motivos:
+//   mercado   comprar y vender no crea ni destruye, solo cambia de mano
+//   dev       la ruta de pruebas, que en producción ni existe
+const MOTIVOS_SIN_CONTAR = ['mercado', 'dev']
+
+function trackItems(sentido, itemId, cantidad, motivo) {
+  if (!cantidad || cantidad <= 0) return
+  if (MOTIVOS_SIN_CONTAR.includes(motivo)) return
+  const b = dailyBucket(), h = hourlyBucket()
+  const campo = sentido === 'creado' ? 'itemsCreados' : 'itemsDestruidos'
+  // Los `|| 0` existen porque un servidor que arranca de un archivo
+  // guardado antes de este cambio trae huecos donde ahora hay contador.
+  b[campo] = (b[campo] || 0) + cantidad
+  h[campo] = (h[campo] || 0) + cantidad
+  if (!b.itemsPorMotivo) b.itemsPorMotivo = {}
+  const clave = sentido + ':' + (motivo || 'otro')
+  b.itemsPorMotivo[clave] = (b.itemsPorMotivo[clave] || 0) + cantidad
 }
 
 // ── Sesiones de juego (minutos reales, no logins) ──────────────────
@@ -23420,12 +23498,50 @@ function retention() {
 }
 function pct(a, b) { return b ? Math.round((a / b) * 1000) / 10 : 0 }
 
+// Ventas de mercado agrupadas por hora.
+//
+// No hay un contador aparte a propósito: cada venta ya queda escrita en
+// store.marketTransactions con su hora, su total y su comisión. Un
+// contador paralelo solo añadiría una segunda verdad que se puede
+// desincronizar de la primera, y entonces habría que decidir cuál de las
+// dos es la buena.
+function mercadoPorHora() {
+  const out = {}
+  for (const t of store.marketTransactions) {
+    const k = String(t.at).slice(0, 13)
+    if (!out[k]) out[k] = { ventas: 0, volumen: 0, comision: 0, unidades: 0 }
+    out[k].ventas += 1
+    out[k].volumen += t.total || 0
+    out[k].comision += t.fee || 0
+    out[k].unidades += t.quantity || 0
+  }
+  return out
+}
+
 function goldPerHourCurve() {
   const keys = Object.keys(store.analytics.hourly).sort().slice(-48)
+  const mercado = mercadoPorHora()
   return keys.map(k => {
     const h = store.analytics.hourly[k]
     const horas = h.playMinutes / 60
-    return { hora: k, oroCreado: h.goldFaucet, oroQuemado: h.goldSink, neto: h.goldFaucet - h.goldSink, cgrid: h.cgridMint, kills: h.kills, oroPorHoraJugada: horas > 0.05 ? Math.round(h.goldFaucet / horas) : null }
+    const m = mercado[k] || { ventas: 0, volumen: 0, comision: 0, unidades: 0 }
+    // Los `|| 0` de los objetos: un archivo guardado antes de que esto
+    // existiera trae horas sin esos contadores.
+    const creados = h.itemsCreados || 0, destruidos = h.itemsDestruidos || 0
+    return {
+      hora: k,
+      oroCreado: h.goldFaucet, oroQuemado: h.goldSink, neto: h.goldFaucet - h.goldSink,
+      cgrid: h.cgridMint, kills: h.kills,
+      oroPorHoraJugada: horas > 0.05 ? Math.round(h.goldFaucet / horas) : null,
+      objetosCreados: creados, objetosDestruidos: destruidos,
+      objetosNetos: creados - destruidos,
+      objetosPorHoraJugada: horas > 0.05 ? Math.round(creados / horas) : null,
+      mercadoVentas: m.ventas, mercadoVolumen: m.volumen, mercadoComision: m.comision,
+      // Lo que de verdad se paga de media por unidad esa hora. El precio
+      // medio de las publicaciones activas dice lo que la gente PIDE;
+      // esto dice lo que la gente PAGA, que no es lo mismo.
+      precioMedioPagado: m.unidades ? Math.round(m.volumen / m.unidades) : null,
+    }
   })
 }
 
@@ -23478,6 +23594,25 @@ function publicEconomyReport() {
   })).sort((a, b) => b.publicaciones - a.publicaciones)
 
   const ventas = store.marketTransactions.slice(-200)
+
+  // Precio realmente pagado por objeto, sobre TODO el historial que se
+  // conserva. Junto al precio pedido de arriba, es lo que deja ver si un
+  // objeto se publica caro y se vende barato, o si directamente no se
+  // vende.
+  const pagados = {}
+  for (const t of store.marketTransactions) {
+    if (!pagados[t.itemId]) pagados[t.itemId] = { unidades: 0, total: 0, ventas: 0 }
+    pagados[t.itemId].unidades += t.quantity || 0
+    pagados[t.itemId].total += t.total || 0
+    pagados[t.itemId].ventas += 1
+  }
+  const preciosPagados = Object.entries(pagados).map(([itemId, v]) => ({
+    itemId, nombre: template(itemId)?.name || itemId,
+    ventas: v.ventas, unidades: v.unidades,
+    precioMedioPagado: v.unidades ? Math.round(v.total / v.unidades) : null,
+  })).sort((a, b) => b.ventas - a.ventas)
+
+  const hoy = dailyBucket()
   return {
     generado: new Date().toISOString(),
     aviso: 'CGRID es actualmente un saldo OFF-CHAIN. No existe token desplegado. Estas cifras son del servidor de juego.',
@@ -23500,7 +23635,24 @@ function publicEconomyReport() {
       ventasRegistradas: store.marketTransactions.length,
       volumenUltimas200Ventas: ventas.reduce((a, t) => a + t.total, 0),
       comisionQuemada: ventas.reduce((a, t) => a + t.fee, 0),
+      volumenTotal: store.marketTransactions.reduce((a, t) => a + (t.total || 0), 0),
       precios: mercado,
+      preciosPagados,
+    },
+    // Objetos: la otra mitad de la economía. Sin esto, un mercado con
+    // precios a la baja no se distingue de uno con demasiada gente
+    // vendiendo lo mismo.
+    objetos: {
+      creadosHoy: hoy.itemsCreados || 0,
+      destruidosHoy: hoy.itemsDestruidos || 0,
+      netoHoy: (hoy.itemsCreados || 0) - (hoy.itemsDestruidos || 0),
+      porMotivoHoy: hoy.itemsPorMotivo || {},
+      nota: 'Comprar y vender no cuenta: el objeto cambia de dueño, no se crea ni se destruye.',
+      ultimos14dias: dias.map(d => ({
+        dia: d,
+        creados: store.analytics.daily[d].itemsCreados || 0,
+        destruidos: store.analytics.daily[d].itemsDestruidos || 0,
+      })),
     },
     jugadores: { registrados: Object.keys(store.players).length, activosHoy: dailyBucket().activeUsers.length },
   }
@@ -25621,7 +25773,7 @@ function terminar(p, motivo) {
   // El botín de los enemigos derrotados se entrega aunque se pierda:
   // lo que ya mataste, ya lo mataste.
   for (const l of p.botin) {
-    if (addItem(char, l.itemId, l.quantity)) {
+    if (addItem(char, l.itemId, l.quantity, 'botin')) {
       botinFinal.push({ itemId: l.itemId, quantity: l.quantity, name: template(l.itemId).name,
         icon: template(l.itemId).icon, imagen: template(l.itemId).imagen || null })
     }
@@ -26234,7 +26386,7 @@ function terminarRun(player, run, motivo) {
     // El botín solo se entrega si sales con vida: es lo que hace que
     // retirarse a tiempo sea una decisión y no un trámite.
     for (const b of run.botin) {
-      if (addItem(char, b.itemId, b.quantity)) {
+      if (addItem(char, b.itemId, b.quantity, 'botin')) {
         botinFinal.push({ ...b, nombre: template(b.itemId).name, icono: template(b.itemId).icon })
       }
     }
@@ -26249,7 +26401,7 @@ function terminarRun(player, run, motivo) {
   } else {
     // Retirada voluntaria: te llevas la mitad del botín
     for (const b of run.botin.slice(0, Math.ceil(run.botin.length / 2))) {
-      if (addItem(char, b.itemId, b.quantity)) {
+      if (addItem(char, b.itemId, b.quantity, 'botin')) {
         botinFinal.push({ ...b, nombre: template(b.itemId).name, icono: template(b.itemId).icon })
       }
     }
@@ -26598,7 +26750,7 @@ async function handleAPI(req, res, pathname, query) {
       if (t.heal && char.hp >= st.maxHp) return fail(res, 'Ya tienes la vida al máximo', 400)
       if (t.mana && !t.heal && char.mp >= st.maxMp) return fail(res, 'Ya tienes el maná al máximo', 400)
     }
-    removeItem(char, item.itemId, 1)
+    removeItem(char, item.itemId, 1, 'consumo')
     const curado = t.heal ? Math.min(t.heal, st.maxHp - char.hp) : 0
     const restaurado = t.mana ? Math.min(t.mana, st.maxMp - char.mp) : 0
     char.hp = Math.min(st.maxHp, char.hp + curado)
@@ -26777,7 +26929,7 @@ async function handleAPI(req, res, pathname, query) {
     const t = template(body.itemId)
     if (!t) return fail(res, 'Ese objeto no existe', 400)
     const cant = Math.max(1, Math.min(99, Number(body.quantity) || 1))
-    addItem(char, body.itemId, cant)
+    addItem(char, body.itemId, cant, 'dev')
     persist()
     console.warn(`  🧪  [dev] ${p.username} se ha dado ${cant}× ${t.name}`)
     return json(res, { ok: true, item: { itemId: body.itemId, name: t.name, quantity: cant } })
@@ -26975,7 +27127,7 @@ async function handleAPI(req, res, pathname, query) {
       char.gold += rw.gold
       char.xp += rw.xp
       const cgrid = creditCgrid(char, rw.cgrid || 0, `quest:${q.id}`)
-      if (rw.itemId) addItem(char, rw.itemId, rw.itemQty || 1)
+      if (rw.itemId) addItem(char, rw.itemId, rw.itemQty || 1, 'mision')
       char.activeQuests.splice(idx, 1)
       char.completedQuests.push(questId)
       const levelUps = checkLevelUp(char)
@@ -27001,10 +27153,10 @@ async function handleAPI(req, res, pathname, query) {
     for (const ing of recipe.ingredients) {
       if (countItem(char, ing.itemId) < ing.quantity * qty) return fail(res, `Faltan materiales: ${template(ing.itemId).name}`)
     }
-    for (const ing of recipe.ingredients) removeItem(char, ing.itemId, ing.quantity * qty)
+    for (const ing of recipe.ingredients) removeItem(char, ing.itemId, ing.quantity * qty, 'fabricacion')
     let made = 0, failed = 0
     for (let i = 0; i < qty; i++) {
-      if (Math.random() <= recipe.successRate) { addItem(char, recipe.outputItemId, recipe.outputQty); made += recipe.outputQty }
+      if (Math.random() <= recipe.successRate) { addItem(char, recipe.outputItemId, recipe.outputQty, 'fabricacion'); made += recipe.outputQty }
       else failed++
     }
     char.xp += recipe.xp * qty

@@ -256,7 +256,7 @@ function terminarRun(player, run, motivo) {
     // El botín solo se entrega si sales con vida: es lo que hace que
     // retirarse a tiempo sea una decisión y no un trámite.
     for (const b of run.botin) {
-      if (addItem(char, b.itemId, b.quantity)) {
+      if (addItem(char, b.itemId, b.quantity, 'botin')) {
         botinFinal.push({ ...b, nombre: template(b.itemId).name, icono: template(b.itemId).icon })
       }
     }
@@ -271,7 +271,7 @@ function terminarRun(player, run, motivo) {
   } else {
     // Retirada voluntaria: te llevas la mitad del botín
     for (const b of run.botin.slice(0, Math.ceil(run.botin.length / 2))) {
-      if (addItem(char, b.itemId, b.quantity)) {
+      if (addItem(char, b.itemId, b.quantity, 'botin')) {
         botinFinal.push({ ...b, nombre: template(b.itemId).name, icono: template(b.itemId).icon })
       }
     }

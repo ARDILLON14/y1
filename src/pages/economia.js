@@ -155,8 +155,12 @@ td.num{font-family:monospace;text-align:right}
 <div class="grid" id="cards"></div>
 <div class="sec">Oro creado vs quemado (14 días)</div>
 <table id="oro"></table>
+<div class="sec">Objetos creados vs destruidos (14 días)</div>
+<table id="objetos"></table>
 <div class="sec">Precios del mercado</div>
 <table id="mercado"></table>
+<div class="sec">Lo que de verdad se paga</div>
+<table id="pagados"></table>
 <div class="sec">Reglas de emisión de CGRID</div>
 <div class="card" id="reglas"></div>
 </div>
@@ -172,6 +176,9 @@ fetch('/api/economy/public').then(r=>r.json()).then(d=>{
     ['CGRID en circulación', n(d.cgrid.circulante)],
     ['CGRID emitido hoy', n(d.cgrid.emitidoHoy) + ' / ' + n(d.cgrid.topeDiarioGlobal)],
     ['Publicaciones activas', n(d.mercado.publicacionesActivas)],
+    ['Volumen del mercado', n(d.mercado.volumenTotal)],
+    ['Objetos creados hoy', n(d.objetos.creadosHoy)],
+    ['Objetos destruidos hoy', n(d.objetos.destruidosHoy)],
     ['Jugadores registrados', n(d.jugadores.registrados)],
     ['Activos hoy', n(d.jugadores.activosHoy)],
   ].map(([k,v])=>\`<div class="card"><div class="k">\${k}</div><div class="v">\${v}</div></div>\`).join('')
@@ -185,11 +192,32 @@ fetch('/api/economy/public').then(r=>r.json()).then(d=>{
           <div class="bar"><i style="width:\${x.quemado/max*100}%;background:#10B981"></i></div></td></tr>\`).join('')
     + '<tr><td colspan="5" class="tag">Barra dorada = oro creado (faucet) · Barra verde = oro destruido (sink). Si la dorada domina siempre, hay inflación.</td></tr>'
 
+  // Objetos: la otra mitad de la economía. El oro se ve porque es un
+  // número en la ficha; los objetos, no, y sin embargo son lo que hunde
+  // o sostiene los precios del mercado.
+  const maxO = Math.max(1, ...d.objetos.ultimos14dias.flatMap(x=>[x.creados,x.destruidos]))
+  document.getElementById('objetos').innerHTML =
+    '<tr><th>Día</th><th>Creados</th><th>Destruidos</th><th>Neto</th><th style="width:35%">Balance</th></tr>' +
+    d.objetos.ultimos14dias.map(x=>\`<tr><td>\${x.dia}</td><td class="num">\${n(x.creados)}</td><td class="num">\${n(x.destruidos)}</td>
+      <td class="num" style="color:\${x.creados-x.destruidos>0?'#EF4444':'#10B981'}">\${n(x.creados-x.destruidos)}</td>
+      <td><div class="bar"><i style="width:\${x.creados/maxO*100}%;background:#C8A84B"></i></div>
+          <div class="bar"><i style="width:\${x.destruidos/maxO*100}%;background:#10B981"></i></div></td></tr>\`).join('')
+    + '<tr><td colspan="5" class="tag">' + d.objetos.nota + ' Si la barra dorada domina siempre, cada vez hay más objetos persiguiendo el mismo oro y los precios caen.</td></tr>'
+
   document.getElementById('mercado').innerHTML =
     '<tr><th>Objeto</th><th>Rareza</th><th>Publicaciones</th><th>Mín</th><th>Medio</th><th>Máx</th></tr>' +
     (d.mercado.precios.length ? d.mercado.precios.map(x=>\`<tr><td>\${x.nombre}</td><td class="r-\${x.rareza}">\${x.rareza}</td>
       <td class="num">\${x.publicaciones}</td><td class="num">\${n(x.precioMin)}</td><td class="num">\${n(x.precioMedio)}</td><td class="num">\${n(x.precioMax)}</td></tr>\`).join('')
       : '<tr><td colspan="6" class="tag">Sin publicaciones activas.</td></tr>')
+
+  // Pedir y pagar no son lo mismo. La tabla de arriba dice a cuánto se
+  // publica; esta, a cuánto se vende de verdad. Un objeto que se publica
+  // caro y no se vende nunca solo se ve comparando las dos.
+  document.getElementById('pagados').innerHTML =
+    '<tr><th>Objeto</th><th>Ventas</th><th>Unidades</th><th>Precio medio pagado</th></tr>' +
+    (d.mercado.preciosPagados.length ? d.mercado.preciosPagados.slice(0,25).map(x=>\`<tr><td>\${x.nombre}</td>
+      <td class="num">\${n(x.ventas)}</td><td class="num">\${n(x.unidades)}</td><td class="num">\${n(x.precioMedioPagado)}</td></tr>\`).join('')
+      : '<tr><td colspan="4" class="tag">Todavía no se ha vendido nada.</td></tr>')
 
   document.getElementById('reglas').innerHTML =
     '<div class="tag">Fuentes de CGRID:</div><ul style="margin:6px 0 12px 18px;font-size:13px">' + d.cgrid.fuentes.map(f=>'<li>'+f+'</li>').join('') + '</ul>' +

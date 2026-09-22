@@ -86,7 +86,7 @@ function recolectar(char, nodoId) {
   for (const [itemId, min, max, prob] of nodo.sueltan) {
     if (Math.random() > prob) continue
     const cantidad = randInt(min, max)
-    if (!addItem(char, itemId, cantidad)) continue   // mochila llena
+    if (!addItem(char, itemId, cantidad, 'recoleccion')) continue   // mochila llena
     obtenido.push({ itemId, cantidad, nombre: template(itemId).name, icono: template(itemId).icon })
     questUpdates.push(...emitProgress(char, `gather_${itemId}`, cantidad))
   }
@@ -162,7 +162,7 @@ function sembrar(char, indice, semillaId) {
   char.huerto = char.huerto || []
   if (char.huerto[i] && char.huerto[i].semilla) return { error: 'Esa parcela ya está sembrada', code: 409 }
   if (countItem(char, semillaId) < 1) return { error: `No tienes ${c.nombre}`, code: 400 }
-  removeItem(char, semillaId, 1)
+  removeItem(char, semillaId, 1, 'siembra')
   char.huerto[i] = { semilla: semillaId, sembradoEn: now(), listoEn: now() + c.creceMs }
   audit('sembrar', char.name, { parcela: i, semilla: semillaId })
   persist()
@@ -181,13 +181,13 @@ function cosechar(char, indice) {
 
   const obtenido = []
   const cantidad = randInt(c.min, c.max)
-  if (addItem(char, c.produce, cantidad)) {
+  if (addItem(char, c.produce, cantidad, 'cosecha')) {
     obtenido.push({ itemId: c.produce, cantidad, nombre: template(c.produce).name, icono: template(c.produce).icon })
   }
   // Devolver semillas de vez en cuando evita que el huerto se agote
   if (c.extra && Math.random() < c.extra.prob) {
     const n = randInt(c.extra.min, c.extra.max)
-    if (addItem(char, c.extra.itemId, n)) {
+    if (addItem(char, c.extra.itemId, n, 'cosecha')) {
       obtenido.push({ itemId: c.extra.itemId, cantidad: n, nombre: CULTIVOS[c.extra.itemId].nombre, icono: CULTIVOS[c.extra.itemId].icono })
     }
   }

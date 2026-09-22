@@ -28,7 +28,8 @@ function hourKey(d = new Date()) { return d.toISOString().slice(0, 13) }
 function dailyBucket(k = day()) {
   const a = store.analytics.daily
   if (!a[k]) {
-    a[k] = { newUsers: 0, activeUsers: [], events: {}, goldFaucet: 0, goldSink: 0, cgridMint: 0, sessions: 0, playMinutes: 0 }
+    a[k] = { newUsers: 0, activeUsers: [], events: {}, goldFaucet: 0, goldSink: 0, cgridMint: 0, sessions: 0, playMinutes: 0,
+             itemsCreados: 0, itemsDestruidos: 0, itemsPorMotivo: {} }
     const claves = Object.keys(a).sort()
     for (const vieja of claves.slice(0, Math.max(0, claves.length - DIAS_GUARDADOS))) delete a[vieja]
   }
@@ -43,7 +44,7 @@ const DIAS_GUARDADOS = 90
 function hourlyBucket(k = hourKey()) {
   const h = store.analytics.hourly
   if (!h[k]) {
-    h[k] = { goldFaucet: 0, goldSink: 0, cgridMint: 0, kills: 0, playMinutes: 0 }
+    h[k] = { goldFaucet: 0, goldSink: 0, cgridMint: 0, kills: 0, playMinutes: 0, itemsCreados: 0, itemsDestruidos: 0 }
     const claves = Object.keys(h).sort()
     for (const vieja of claves.slice(0, Math.max(0, claves.length - HORAS_GUARDADAS))) delete h[vieja]
   }
@@ -104,6 +105,33 @@ function trackCurrency(username, currency, amount, reason) {
     store.analytics.currencyLog.push({ at: Date.now(), username, currency, amount, reason })
     if (store.analytics.currencyLog.length > 5000) store.analytics.currencyLog.splice(0, 2500)
   } else store.analytics.currencyLog = []
+}
+
+// ── Flujo de objetos: cuántos entran y cuántos salen del juego ─────
+//
+// Faltaba de la lista de la FASE 18, y es la mitad que explica la otra.
+// El oro creado por hora ya se medía; sin saber cuántos objetos se
+// crean y se destruyen, un mercado con precios que bajan no se puede
+// distinguir de uno con demasiados jugadores vendiendo lo mismo.
+//
+// Lo llama addItem/removeItem, que son los dos puntos de paso por los
+// que entra y sale todo objeto del juego. Se quedan fuera dos motivos:
+//   mercado   comprar y vender no crea ni destruye, solo cambia de mano
+//   dev       la ruta de pruebas, que en producción ni existe
+const MOTIVOS_SIN_CONTAR = ['mercado', 'dev']
+
+function trackItems(sentido, itemId, cantidad, motivo) {
+  if (!cantidad || cantidad <= 0) return
+  if (MOTIVOS_SIN_CONTAR.includes(motivo)) return
+  const b = dailyBucket(), h = hourlyBucket()
+  const campo = sentido === 'creado' ? 'itemsCreados' : 'itemsDestruidos'
+  // Los `|| 0` existen porque un servidor que arranca de un archivo
+  // guardado antes de este cambio trae huecos donde ahora hay contador.
+  b[campo] = (b[campo] || 0) + cantidad
+  h[campo] = (h[campo] || 0) + cantidad
+  if (!b.itemsPorMotivo) b.itemsPorMotivo = {}
+  const clave = sentido + ':' + (motivo || 'otro')
+  b.itemsPorMotivo[clave] = (b.itemsPorMotivo[clave] || 0) + cantidad
 }
 
 // ── Sesiones de juego (minutos reales, no logins) ──────────────────
@@ -199,12 +227,50 @@ function retention() {
 }
 function pct(a, b) { return b ? Math.round((a / b) * 1000) / 10 : 0 }
 
+// Ventas de mercado agrupadas por hora.
+//
+// No hay un contador aparte a propósito: cada venta ya queda escrita en
+// store.marketTransactions con su hora, su total y su comisión. Un
+// contador paralelo solo añadiría una segunda verdad que se puede
+// desincronizar de la primera, y entonces habría que decidir cuál de las
+// dos es la buena.
+function mercadoPorHora() {
+  const out = {}
+  for (const t of store.marketTransactions) {
+    const k = String(t.at).slice(0, 13)
+    if (!out[k]) out[k] = { ventas: 0, volumen: 0, comision: 0, unidades: 0 }
+    out[k].ventas += 1
+    out[k].volumen += t.total || 0
+    out[k].comision += t.fee || 0
+    out[k].unidades += t.quantity || 0
+  }
+  return out
+}
+
 function goldPerHourCurve() {
   const keys = Object.keys(store.analytics.hourly).sort().slice(-48)
+  const mercado = mercadoPorHora()
   return keys.map(k => {
     const h = store.analytics.hourly[k]
     const horas = h.playMinutes / 60
-    return { hora: k, oroCreado: h.goldFaucet, oroQuemado: h.goldSink, neto: h.goldFaucet - h.goldSink, cgrid: h.cgridMint, kills: h.kills, oroPorHoraJugada: horas > 0.05 ? Math.round(h.goldFaucet / horas) : null }
+    const m = mercado[k] || { ventas: 0, volumen: 0, comision: 0, unidades: 0 }
+    // Los `|| 0` de los objetos: un archivo guardado antes de que esto
+    // existiera trae horas sin esos contadores.
+    const creados = h.itemsCreados || 0, destruidos = h.itemsDestruidos || 0
+    return {
+      hora: k,
+      oroCreado: h.goldFaucet, oroQuemado: h.goldSink, neto: h.goldFaucet - h.goldSink,
+      cgrid: h.cgridMint, kills: h.kills,
+      oroPorHoraJugada: horas > 0.05 ? Math.round(h.goldFaucet / horas) : null,
+      objetosCreados: creados, objetosDestruidos: destruidos,
+      objetosNetos: creados - destruidos,
+      objetosPorHoraJugada: horas > 0.05 ? Math.round(creados / horas) : null,
+      mercadoVentas: m.ventas, mercadoVolumen: m.volumen, mercadoComision: m.comision,
+      // Lo que de verdad se paga de media por unidad esa hora. El precio
+      // medio de las publicaciones activas dice lo que la gente PIDE;
+      // esto dice lo que la gente PAGA, que no es lo mismo.
+      precioMedioPagado: m.unidades ? Math.round(m.volumen / m.unidades) : null,
+    }
   })
 }
 
@@ -257,6 +323,25 @@ function publicEconomyReport() {
   })).sort((a, b) => b.publicaciones - a.publicaciones)
 
   const ventas = store.marketTransactions.slice(-200)
+
+  // Precio realmente pagado por objeto, sobre TODO el historial que se
+  // conserva. Junto al precio pedido de arriba, es lo que deja ver si un
+  // objeto se publica caro y se vende barato, o si directamente no se
+  // vende.
+  const pagados = {}
+  for (const t of store.marketTransactions) {
+    if (!pagados[t.itemId]) pagados[t.itemId] = { unidades: 0, total: 0, ventas: 0 }
+    pagados[t.itemId].unidades += t.quantity || 0
+    pagados[t.itemId].total += t.total || 0
+    pagados[t.itemId].ventas += 1
+  }
+  const preciosPagados = Object.entries(pagados).map(([itemId, v]) => ({
+    itemId, nombre: template(itemId)?.name || itemId,
+    ventas: v.ventas, unidades: v.unidades,
+    precioMedioPagado: v.unidades ? Math.round(v.total / v.unidades) : null,
+  })).sort((a, b) => b.ventas - a.ventas)
+
+  const hoy = dailyBucket()
   return {
     generado: new Date().toISOString(),
     aviso: 'CGRID es actualmente un saldo OFF-CHAIN. No existe token desplegado. Estas cifras son del servidor de juego.',
@@ -279,7 +364,24 @@ function publicEconomyReport() {
       ventasRegistradas: store.marketTransactions.length,
       volumenUltimas200Ventas: ventas.reduce((a, t) => a + t.total, 0),
       comisionQuemada: ventas.reduce((a, t) => a + t.fee, 0),
+      volumenTotal: store.marketTransactions.reduce((a, t) => a + (t.total || 0), 0),
       precios: mercado,
+      preciosPagados,
+    },
+    // Objetos: la otra mitad de la economía. Sin esto, un mercado con
+    // precios a la baja no se distingue de uno con demasiada gente
+    // vendiendo lo mismo.
+    objetos: {
+      creadosHoy: hoy.itemsCreados || 0,
+      destruidosHoy: hoy.itemsDestruidos || 0,
+      netoHoy: (hoy.itemsCreados || 0) - (hoy.itemsDestruidos || 0),
+      porMotivoHoy: hoy.itemsPorMotivo || {},
+      nota: 'Comprar y vender no cuenta: el objeto cambia de dueño, no se crea ni se destruye.',
+      ultimos14dias: dias.map(d => ({
+        dia: d,
+        creados: store.analytics.daily[d].itemsCreados || 0,
+        destruidos: store.analytics.daily[d].itemsDestruidos || 0,
+      })),
     },
     jugadores: { registrados: Object.keys(store.players).length, activosHoy: dailyBucket().activeUsers.length },
   }

@@ -23,6 +23,8 @@ Fecha: 2026-09-21 · Base auditada: commit de importación del zip `criptomundo-
 > - §5.2 cuerpo y hurtbox compartían radio — **STEP 8** (ya completo)
 > - §0 `build.js --check` no comprobaba que el archivo parseara — **STEP 8**
 > - §3.4 cofre, trampa y santuario eran tiradas de dados — **STEP 9**
+> - §5.4 faltaba el flujo de objetos y el volumen de mercado — **STEP 10**
+> - §5.5 **este apartado estaba MAL**, corregido en el **STEP 10**
 
 Este documento es el resultado de la FASE 0. **No se ha modificado ni una
 línea de gameplay.** Todo lo que sigue está comprobado contra el código o
@@ -479,14 +481,56 @@ fuente, no los usa el juego.
 
 ### 5.4 Métricas de economía incompletas
 
+> ✅ **Resuelto en el STEP 10.** `addItem` y `removeItem` son los dos
+> puntos de paso por los que entra y sale todo objeto del juego, así que
+> son el único sitio donde se puede contar sin que se escape ninguno.
+> Ahora llevan un motivo y alimentan contadores por hora y por día. El
+> volumen de mercado y el precio realmente pagado se derivan de
+> `store.marketTransactions`, que ya guardaba la hora, el total y la
+> comisión de cada venta: un contador paralelo solo habría añadido una
+> segunda verdad que se puede desincronizar de la primera.
+>
+> Lo delicado no era contar sino no contar de más: comprar y vender NO
+> crea ni destruye nada, el objeto cambia de dueño. Si eso contara como
+> creación, el mercado parecería una fábrica. Lo cubre
+> `test-economia-objetos.js`.
+
+
 `goldPerHourCurve()` da oro creado, quemado, neto, CGRID emitido y kills por
 hora. De la lista de la FASE 18 faltan: objetos creados/hora, objetos
 destruidos/hora, precio medio por objeto y volumen del mercado.
 
 ### 5.5 Código muerto
 
-- ~120 líneas de CSS de PvP sin HTML (§2.3).
-- 9 scripts `aplicar-*.js` en la raíz: parches de una sola vez ya aplicados.
+> ⚠️ **Este apartado estaba mal, y se corrige aquí en vez de actuar sobre
+> él.** Es el único sitio de esta auditoría donde la foto de partida se
+> equivocó, y conviene que quede escrito.
+>
+> - El CSS de PvP ya no está muerto: el **STEP 5** le puso el HTML que le
+>   faltaba, así que las ~120 líneas se usan.
+> - Los `aplicar-*.js` **no son ocho parches de una sola vez**. Son
+>   ocho archivos de dos clases distintas, y la auditoría los metió a
+>   todos en el mismo saco sin mirar:
+>
+>   | Archivo | Qué es |
+>   |---|---|
+>   | `aplicar-css-movil.js` | inyector vivo, `npm run css-movil`, con `test-movil.js` detrás |
+>   | `aplicar-red-cliente.js` | inyector vivo, `npm run red-cliente`, con `test-red-cliente.js` |
+>   | `aplicar-avisos.js` | inyector vivo, `npm run avisos`, con `test-avisos.js` |
+>   | `aplicar-espadas.js` | registro de un cambio ya aplicado |
+>   | `aplicar-foco-teclado.js` | registro de un cambio ya aplicado |
+>   | `aplicar-pociones-equipo.js` | registro de un cambio ya aplicado |
+>   | `aplicar-rutas-recursos.js` | registro de un cambio ya aplicado |
+>   | `aplicar-transparencia-armas.js` | herramienta que recortó los PNG; los originales siguen en `assets/items/originales/` |
+>
+>   Los tres primeros mantienen bloques compartidos en las 18 páginas
+>   desde un solo sitio; está documentado en `docs/PROYECTO.md` y en
+>   `docs/CAMBIOS_V8.md`. Borrarlos habría roto tres comandos y tres
+>   pruebas. Los otros cinco no estorban a nadie y son el registro de
+>   cómo se hizo algo: borrarlos no gana nada y pierde eso.
+>
+>   Conclusión: **no se borra ninguno**. Aquí no había código muerto que
+>   quitar; había una nota de auditoría escrita sin comprobar.
 
 ### 5.6 Cada prueba deja su servidor vivo
 

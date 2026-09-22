@@ -379,7 +379,7 @@ function golpearRecurso(char, nodoId, posicion, usuario) {
     for (const [itemId, min, max, prob] of n.tipo.suelta) {
       if (Math.random() > prob) continue
       const cantidad = randInt(min, max)
-      if (!addItem(char, itemId, cantidad)) continue      // mochila llena
+      if (!addItem(char, itemId, cantidad, 'recoleccion')) continue      // mochila llena
       const t = template(itemId)
       obtenido.push({ itemId, cantidad, nombre: t.name, icono: t.icon, rareza: t.rarity })
       questUpdates.push(...emitProgress(char, `gather_${itemId}`, cantidad))

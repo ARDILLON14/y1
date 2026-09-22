@@ -317,7 +317,7 @@ async function handleAPI(req, res, pathname, query) {
       if (t.heal && char.hp >= st.maxHp) return fail(res, 'Ya tienes la vida al máximo', 400)
       if (t.mana && !t.heal && char.mp >= st.maxMp) return fail(res, 'Ya tienes el maná al máximo', 400)
     }
-    removeItem(char, item.itemId, 1)
+    removeItem(char, item.itemId, 1, 'consumo')
     const curado = t.heal ? Math.min(t.heal, st.maxHp - char.hp) : 0
     const restaurado = t.mana ? Math.min(t.mana, st.maxMp - char.mp) : 0
     char.hp = Math.min(st.maxHp, char.hp + curado)
@@ -496,7 +496,7 @@ async function handleAPI(req, res, pathname, query) {
     const t = template(body.itemId)
     if (!t) return fail(res, 'Ese objeto no existe', 400)
     const cant = Math.max(1, Math.min(99, Number(body.quantity) || 1))
-    addItem(char, body.itemId, cant)
+    addItem(char, body.itemId, cant, 'dev')
     persist()
     console.warn(`  🧪  [dev] ${p.username} se ha dado ${cant}× ${t.name}`)
     return json(res, { ok: true, item: { itemId: body.itemId, name: t.name, quantity: cant } })
@@ -694,7 +694,7 @@ async function handleAPI(req, res, pathname, query) {
       char.gold += rw.gold
       char.xp += rw.xp
       const cgrid = creditCgrid(char, rw.cgrid || 0, `quest:${q.id}`)
-      if (rw.itemId) addItem(char, rw.itemId, rw.itemQty || 1)
+      if (rw.itemId) addItem(char, rw.itemId, rw.itemQty || 1, 'mision')
       char.activeQuests.splice(idx, 1)
       char.completedQuests.push(questId)
       const levelUps = checkLevelUp(char)
@@ -720,10 +720,10 @@ async function handleAPI(req, res, pathname, query) {
     for (const ing of recipe.ingredients) {
       if (countItem(char, ing.itemId) < ing.quantity * qty) return fail(res, `Faltan materiales: ${template(ing.itemId).name}`)
     }
-    for (const ing of recipe.ingredients) removeItem(char, ing.itemId, ing.quantity * qty)
+    for (const ing of recipe.ingredients) removeItem(char, ing.itemId, ing.quantity * qty, 'fabricacion')
     let made = 0, failed = 0
     for (let i = 0; i < qty; i++) {
-      if (Math.random() <= recipe.successRate) { addItem(char, recipe.outputItemId, recipe.outputQty); made += recipe.outputQty }
+      if (Math.random() <= recipe.successRate) { addItem(char, recipe.outputItemId, recipe.outputQty, 'fabricacion'); made += recipe.outputQty }
       else failed++
     }
     char.xp += recipe.xp * qty

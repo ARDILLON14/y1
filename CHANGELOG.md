@@ -4,6 +4,55 @@ Cada versión con lo que la motivó. Los detalles completos están en `docs/CAMB
 
 ## v32 (en curso) — El mundo deja de pelear consigo mismo
 
+### La economía medía el oro y no medía los objetos
+
+La curva de economía daba oro creado, oro quemado, neto, CGRID emitido y
+bajas por hora. Faltaba la otra mitad: cuántos objetos entran y cuántos
+salen del juego. Sin eso, un mercado con precios a la baja no se puede
+distinguir de uno con demasiada gente vendiendo lo mismo, y son dos
+problemas con soluciones opuestas.
+
+Hay exactamente dos puntos de paso por los que entra y sale todo objeto
+del juego, así que son el único sitio donde se puede contar sin que se
+escape ninguno. Contarlo en cada sitio que reparte botín sería contar
+quince veces y olvidarse de la decimosexta.
+
+Lo delicado no era contar, era no contar de más. Comprar en el mercado no
+crea nada: el objeto sale del escrow del vendedor y entra en la mochila
+del comprador. Si eso contara como creación, el mercado parecería una
+fábrica de objetos y la cifra mentiría justo donde más se mira. Tampoco
+cuenta la ruta de pruebas, que reparte objetos de la nada y en producción
+ni siquiera existe.
+
+Cada entrada y cada salida lleva ahora un motivo, así que no solo se ve
+cuántos objetos se crean sino de qué grifo salen: botín, recolección,
+cosecha, fabricación, misión. Y el volumen de mercado y el precio
+realmente pagado no llevan contador propio: se derivan del historial de
+ventas, que ya guardaba la hora, el total y la comisión de cada una. Un
+contador paralelo solo habría añadido una segunda verdad que se puede
+desincronizar de la primera.
+
+La página pública de economía enseña las dos tablas nuevas: objetos
+creados contra destruidos por día, y lo que de verdad se paga por cada
+objeto al lado de lo que se pide. Un objeto que se publica caro y no se
+vende nunca solo se ve comparando las dos.
+
+### La auditoría se equivocó en un sitio, y no se borró nada por ello
+
+El apartado de código muerto decía que había nueve scripts `aplicar-*.js`
+en la raíz, parches de una sola vez ya aplicados. Son ocho, y tres de
+ellos no son parches: son inyectores vivos que mantienen bloques
+compartidos en las dieciocho páginas desde un solo sitio, tienen su
+comando en package.json y una prueba detrás cada uno. Borrarlos habría
+roto tres comandos y tres pruebas.
+
+Los otros cinco no estorban y son el registro de cómo se hizo algo.
+Borrarlos no gana nada y pierde eso.
+
+Así que no se ha borrado ninguno y lo que se ha corregido es la
+auditoría. Queda escrito ahí porque una foto de partida que se equivoca
+en silencio es peor que no tenerla.
+
 ### Tres de las seis salas de mazmorra no se jugaban
 
 El combate de las mazmorras era real desde hacía versiones: las salas de

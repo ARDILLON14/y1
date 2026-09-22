@@ -444,20 +444,39 @@ function checkLevelUp(char) {
   return events
 }
 
-function addItem(char, itemId, quantity = 1) {
+// Los dos puntos de paso por los que entra y sale TODO objeto del juego.
+//
+// Por eso son también el único sitio donde se puede contar cuántos
+// objetos se crean y se destruyen sin que se escape ninguno. Contarlo en
+// cada sitio que reparte botín sería contar quince veces y olvidarse de
+// la decimosexta.
+//
+// `motivo` dice de dónde viene o a dónde va, y sirve para dos cosas: ver
+// qué grifo está abierto de más, y distinguir lo que de verdad se crea
+// de lo que solo CAMBIA DE MANOS. Comprar en el mercado no crea nada: el
+// objeto sale del escrow del vendedor y entra en la mochila del
+// comprador. Si eso contara como creación, el mercado parecería una
+// fábrica de objetos y las cifras mentirían justo donde más se miran.
+function addItem(char, itemId, quantity = 1, motivo = 'otro') {
   const t = template(itemId)
   if (!t) return null
   const stackable = ['MATERIAL', 'POTION', 'FOOD', 'SEED'].includes(t.type)
+  let dado = null
   if (stackable) {
     const ex = char.inventory.find(i => i.itemId === itemId && !char.equipment?.[i.uid])
-    if (ex) { ex.quantity += quantity; return ex }
+    if (ex) { ex.quantity += quantity; dado = ex }
   }
-  if (char.inventory.length >= 120) return null   // límite de mochila
-  const it = makeItem(itemId, quantity)
-  char.inventory.push(it)
-  return it
+  if (!dado) {
+    if (char.inventory.length >= 120) return null   // límite de mochila
+    dado = makeItem(itemId, quantity)
+    char.inventory.push(dado)
+  }
+  // Solo se cuenta lo que de verdad entró: si la mochila estaba llena,
+  // arriba ya se devolvió null y aquí no se llega.
+  if (typeof trackItems === 'function') trackItems('creado', itemId, quantity, motivo)
+  return dado
 }
-function removeItem(char, itemId, quantity) {
+function removeItem(char, itemId, quantity, motivo = 'otro') {
   let left = quantity
   for (const it of [...char.inventory]) {
     if (it.itemId !== itemId) continue
@@ -467,6 +486,9 @@ function removeItem(char, itemId, quantity) {
     if (it.quantity <= 0) char.inventory = char.inventory.filter(i => i.uid !== it.uid)
     if (left <= 0) break
   }
+  // Se cuenta lo que se quitó de verdad, no lo que se pidió quitar.
+  const quitado = quantity - left
+  if (quitado > 0 && typeof trackItems === 'function') trackItems('destruido', itemId, quitado, motivo)
   return left <= 0
 }
 function countItem(char, itemId) {
@@ -684,7 +706,7 @@ function combatAction(char, battle, action, skillId, itemId) {
     if (!plantilla) return { error: 'Ese objeto no se puede usar en combate', code: 400 }
     const tengo = (char.inventory || []).find(i => i.itemId === usar && i.quantity > 0)
     if (!tengo) return { error: 'No tienes ese objeto', code: 400 }
-    removeItem(char, usar, 1)
+    removeItem(char, usar, 1, 'consumo')
     playerHeal = plantilla.heal || 0
     if (plantilla.mana) char.mp = Math.min(maxMpDe(char), char.mp + plantilla.mana)
     if (plantilla.buff && typeof aplicarEfecto === 'function') aplicarEfecto(char, plantilla.buff)
@@ -813,7 +835,7 @@ function combatAction(char, battle, action, skillId, itemId) {
     const loot = rollLoot(battle.monsterId)
     const questUpdates = []
     for (const l of loot) {
-      addItem(char, l.itemId, l.quantity)
+      addItem(char, l.itemId, l.quantity, 'botin')
       // Las misiones de recolección avanzan con el botín real
       questUpdates.push(...emitProgress(char, `gather_${l.itemId}`, l.quantity))
     }
