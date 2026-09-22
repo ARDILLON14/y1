@@ -524,6 +524,13 @@ function pintarEstado(e) {
     else if (s.t === 'peligro') chispas.push({ x: s.x, y: s.y, t: 0, semilla: Math.random() * 6.28, color: '#E06040' })
     else if (s.t === 'cura') { flotantes.push({ x: s.x, y: s.y, txt: '+' + s.dmg, mio: true, t: 0 }); anotar('⛲ Recuperas ' + s.dmg + ' de vida') }
     else if (s.t === 'sala_hecha') anotar('✅ Sala superada')
+    // Un cambio de fase del jefe cambia las reglas a mitad de pelea. Si
+    // no se dice, el jugador ve que de pronto le disparan las paredes y
+    // no tiene forma de saber por qué.
+    else if (s.t === 'jefe_fase') {
+      anotar('👑 Fase ' + s.fase + ' · ' + s.texto)
+      flotantes.push({ x: 450, y: 120, txt: 'FASE ' + s.fase, mio: false, t: 0 })
+    }
   })
 }
 
@@ -845,6 +852,10 @@ function pintarSala(sala, ahoraMs) {
   var o = sala.objetivo
   var pulsoLento = 0.5 + 0.5 * Math.sin(ahoraMs / 420)
 
+  // La sala del jefe trae peligros pero NO objetivo: se gana matando.
+  // Sin esta salida, dibujarla reventaba el bucle de pintado entero.
+  if (!o) { pintarPeligros(sala); return }
+
   // Zona objetivo: un círculo con el borde marcado y el progreso como
   // un arco que se va cerrando.
   ctx.beginPath(); ctx.arc(o.x, o.y, o.radio, 0, Math.PI * 2)
@@ -861,9 +872,13 @@ function pintarSala(sala, ahoraMs) {
   ctx.fillStyle = 'rgba(232,224,208,.75)'
   ctx.fillText(o.etiqueta, o.x, o.y + o.radio + 16)
 
-  // Emisores. Rojo creciente mientras avisan, y una línea que enseña
-  // por dónde va a pasar el dardo: la trayectoria es la información,
-  // no el emisor.
+  pintarPeligros(sala)
+}
+
+// Emisores. Rojo creciente mientras avisan, y una línea que enseña por
+// dónde va a pasar el dardo: la trayectoria es la información, no el
+// emisor. Va aparte porque la sala del jefe los tiene sin objetivo.
+function pintarPeligros(sala) {
   ;(sala.peligros || []).forEach(function (h) {
     var largo = 900
     if (h.avisando) {

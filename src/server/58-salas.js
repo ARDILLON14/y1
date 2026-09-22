@@ -146,7 +146,8 @@ function pasoPeligros(p, ahora) {
 
 function pasoObjetivo(p, ahora, dt) {
   const o = p.sala.objetivo
-  if (o.hecho) return null
+  // La sala del jefe tiene peligros pero no objetivo: se gana matando.
+  if (!o || o.hecho) return null
   const j = p.jugador
   const dentro = Math.hypot(j.x - o.x, j.y - o.y) <= o.radio
   if (dentro) o.progreso = Math.min(o.usarMs, (o.progreso || 0) + dt * 1000)
@@ -163,4 +164,100 @@ function pasoObjetivo(p, ahora, dt) {
   }
   p.sucesos.push({ t: 'sala_hecha', tipo: p.sala.tipo })
   return terminar(p, 'victoria')
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  SALA DEL JEFE: fases
+//
+//  El jefe era una oleada más. Un bicho con más vida y un acompañante,
+//  peleando exactamente igual desde el primer segundo hasta el último.
+//  El combate por turnos SÍ tiene fases para los jefes —lo dice su
+//  propio código, `battle.phase`—, pero el de la arena no tenía nada:
+//  la última sala de una mazmorra se jugaba igual que la primera.
+//
+//  Esto no añade un sistema nuevo: usa los peligros que ya montan las
+//  salas de trampa y los enemigos que ya trae la mazmorra. Lo único que
+//  hace falta es un reloj que mire la vida del jefe y encienda cosas al
+//  pasar por ciertos puntos.
+//
+//    fase 1   como siempre
+//    fase 2   por debajo del 66 %, la guarida despierta: cuatro
+//             emisores en las paredes empiezan a barrer la sala, así
+//             que ya no se puede pelear parado en un sitio
+//    fase 3   por debajo del 33 %, el jefe llama refuerzos y los
+//             emisores aprietan
+//
+//  Lo que NO cambia: la recompensa, el botín y el enfriamiento de la
+//  mazmorra. El jefe pega lo mismo; lo que cambia es que la sala deja
+//  de ser un sitio neutro.
+// ═══════════════════════════════════════════════════════════════════
+
+function salaDelJefe(mz) {
+  const cx = ARENA_ANCHO / 2, cy = ARENA_ALTO / 2
+  // Cuatro emisores en las paredes, barriendo por el centro. No
+  // aparecen hasta la fase 2: en la ficha están apagados.
+  const emisores = [
+    { x: 30, y: cy - 90, ang: 0 },
+    { x: ARENA_ANCHO - 30, y: cy + 90, ang: Math.PI },
+    { x: cx - 120, y: 30, ang: Math.PI / 2 },
+    { x: cx + 120, y: ARENA_ALTO - 30, ang: -Math.PI / 2 },
+  ]
+  return {
+    tipo: 'jefe', nombre: 'Sala del jefe',
+    // Sin objetivo: esta sala se gana como siempre, matando. Los
+    // peligros son el añadido, no la condición de victoria.
+    objetivo: null,
+    peligros: [],
+    recompensa: {},
+    jefe: {
+      fase: 1,
+      // Los refuerzos salen del mismo grupo de enemigos que ya usa la
+      // mazmorra en sus otras salas. No se inventa ningún bicho.
+      // UN refuerzo, no dos. Con dos, medido contra la versión sin
+      // fases, la pelea pasaba de costar unos 450 de vida a costar 867:
+      // el doble. Y la mayor parte no venía de los emisores sino de que
+      // matar a dos bichos más alarga el combate, y un combate más largo
+      // es más daño recibido. Las fases están para cambiar cómo se
+      // pelea, no para duplicar la factura.
+      refuerzos: [mz.enemigos[0]],
+      // Las dos fichas de emisores, ya escaladas. La fase 3 dispara más
+      // seguido y avisa un pelín menos, que es lo que la hace apretar.
+      emisoresFase2: emisores.map((h, i) => ({ base: h, cfg: { cadaMs: 2200, avisoMs: 620, retraso: i * 550, dmgFrac: 0.04, vel: 300 } })),
+      emisoresFase3: emisores.map((h, i) => ({ base: h, cfg: { cadaMs: 1500, avisoMs: 520, retraso: i * 375, dmgFrac: 0.04, vel: 340 } })),
+    },
+  }
+}
+
+// Reloj de fases. Se llama en cada tick de una sala con jefe.
+//
+// El umbral se mira sobre el enemigo con más vida máxima, que es el
+// jefe: es más robusto que guardar su id, porque si algún día la sala
+// trae dos jefes sigue funcionando sin tocarlo.
+function pasoJefe(p, ahora) {
+  const j = p.sala.jefe
+  const vivos = p.enemigos.filter(e => !e.muerto)
+  if (!vivos.length) return
+  const jefe = vivos.reduce((a, e) => (e.hpMax > a.hpMax ? e : a), vivos[0])
+  const frac = jefe.hp / Math.max(1, jefe.hpMax)
+
+  if (j.fase === 1 && frac <= 0.66) {
+    j.fase = 2
+    p.sala.peligros = j.emisoresFase2.map(e => crearPeligro(e.base, e.cfg))
+    p.sucesos.push({ t: 'jefe_fase', fase: 2, nombre: jefe.nombre,
+                     texto: 'La guarida despierta: las paredes empiezan a disparar' })
+    return
+  }
+  if (j.fase === 2 && frac <= 0.33) {
+    j.fase = 3
+    p.sala.peligros = j.emisoresFase3.map(e => crearPeligro(e.base, e.cfg))
+    // Refuerzos: entran por las esquinas, lejos del jugador, para que
+    // no aparezcan encima y le quiten vida antes de poder reaccionar.
+    const esquinas = [{ x: 90, y: 90 }, { x: ARENA_ANCHO - 90, y: 90 }]
+    j.refuerzos.forEach((id, i) => {
+      const e = esquinas[i % esquinas.length]
+      p.enemigos.push(crearEnemigo(id, e.x, e.y, p.seguimiento))
+    })
+    p.sucesos.push({ t: 'jefe_fase', fase: 3, nombre: jefe.nombre,
+                     texto: '¡Llama a sus guardias!' })
+  }
 }

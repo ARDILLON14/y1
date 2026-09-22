@@ -177,8 +177,13 @@ async function run() {
   const codigo = fs.readFileSync(path.join(__dirname, 'src', 'server', '58-arena.js'), 'utf8')
   const salas = fs.readFileSync(path.join(__dirname, 'src', 'server', '58-salas.js'), 'utf8')
   check('existe el constructor de salas', /function salaDeMazmorra\(/.test(salas))
+  // La condición mira el OBJETIVO, no la sala. Es a propósito: la sala
+  // del jefe también es una sala, tiene peligros y no tiene objetivo,
+  // y esa se gana matando como siempre. Cuando llegaron las fases del
+  // jefe esta comprobación se quedó desfasada y dio en rojo; el que
+  // estaba mal era el patrón, no el código.
   check('una sala se gana por su objetivo, no vaciándola',
-    /!p\.enemigos\.length && p\.estado === 'activa' && !p\.sala/.test(codigo))
+    /!p\.enemigos\.length && p\.estado === 'activa' && !\(p\.sala && p\.sala\.objetivo\)/.test(codigo))
   check('los emisores avisan antes de disparar',
     /aviso_peligro/.test(salas) && /h\.avisando/.test(salas))
   const mz = fs.readFileSync(path.join(__dirname, 'src', 'server', '59-mazmorras.js'), 'utf8')

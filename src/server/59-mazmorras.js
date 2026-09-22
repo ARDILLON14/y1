@@ -157,11 +157,16 @@ function elegirSala(player, salaId) {
   const char = player.character
 
   if (sala.tipo === 'combate' || sala.tipo === 'elite' || sala.tipo === 'jefe') {
-    // El combate lo lleva el motor de arena, con la vida que traes
+    // El combate lo lleva el motor de arena, con la vida que traes.
+    //
+    // La sala del jefe además lleva fases: al bajarle la vida, la
+    // guarida despierta y luego el jefe llama refuerzos. Sin esto, la
+    // última sala de una mazmorra se peleaba igual que la primera.
     const r = iniciarEncuentro(player, {
       oleadas: [sala.enemigos],
       nombre: `${run.mz.nombre} · ${sala.nombre}`,
       origen: 'mazmorra', runId: run.id, vidaInicial: run.vidaActual,
+      sala: sala.tipo === 'jefe' ? salaDelJefe(run.mz) : null,
     })
     if (r.error) return r
     run.enCombate = true

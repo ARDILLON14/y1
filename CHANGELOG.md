@@ -4,6 +4,37 @@ Cada versión con lo que la motivó. Los detalles completos están en `docs/CAMB
 
 ## v32 (en curso) — El mundo deja de pelear consigo mismo
 
+### El jefe de mazmorra peleaba igual en el primer segundo que en el último
+
+Era una oleada más: un bicho con más vida y un acompañante. La última
+sala de una mazmorra se jugaba exactamente igual que la primera. Lo
+curioso es que el combate por turnos SÍ tiene fases para los jefes —está
+escrito en su propio código— y el de tiempo real no tenía ninguna.
+
+Ahora tiene tres. Por debajo del 66 % de vida la guarida despierta y
+cuatro emisores empiezan a barrer la sala, así que ya no se puede pelear
+plantado en un sitio. Por debajo del 33 % llama un refuerzo y los
+emisores aprietan.
+
+No hay sistema nuevo detrás. Usa los peligros que ya montan las salas de
+trampa y los enemigos que ya trae la mazmorra en sus otras salas. Lo
+único que hacía falta era un reloj que mire la vida del jefe y encienda
+cosas al pasar por ciertos puntos.
+
+Y aquí hay una cifra que conviene mirar, porque esto sí cambia el
+equilibrio. Peleando pegado al jefe sin esquivar nunca, que es el caso
+peor, la pelea costaba 447 de vida de media y ahora cuesta 606: un 36 %
+más, y un 28 % más larga.
+
+La primera versión salía al doble, 867. La mayor parte no venía de los
+emisores sino de que llamaba dos refuerzos, y matar dos bichos más alarga
+el combate, y un combate más largo es más daño recibido. Se bajó a un
+refuerzo y el daño de los emisores del 6 % al 4 % de la vida máxima. Las
+fases están para cambiar cómo se pelea, no para duplicar la factura.
+
+La recompensa, el botín y el enfriamiento de la mazmorra no se han
+tocado.
+
 ### La economía medía el oro y no medía los objetos
 
 La curva de economía daba oro creado, oro quemado, neto, CGRID emitido y

@@ -1155,6 +1155,7 @@ function tick(p) {
   // aquí, después de mover proyectiles, para que un dardo recién
   // lanzado no atraviese medio mapa en su primer tick.
   if (p.sala && p.estado === 'activa') {
+    if (p.sala.jefe) pasoJefe(p, ahora)
     pasoPeligros(p, ahora)
     const finSala = pasoObjetivo(p, ahora, dt)
     if (finSala) return finSala
@@ -1162,11 +1163,14 @@ function tick(p) {
 
   // Fin de oleada / de arena
   //
-  // Una sala jugable se gana por el objetivo, no por vaciarla: sin este
-  // `!p.sala` un pasillo de trampas —que no tiene un solo enemigo— se
-  // daría por ganado en el primer tick, antes de que al jugador le diera
-  // tiempo a moverse.
-  if (!p.enemigos.length && p.estado === 'activa' && !p.sala) {
+  // Una sala con OBJETIVO se gana por el objetivo, no por vaciarla: sin
+  // esta condición un pasillo de trampas —que no tiene un solo enemigo—
+  // se daría por ganado en el primer tick, antes de que al jugador le
+  // diera tiempo a moverse.
+  //
+  // La del jefe es una sala sin objetivo: tiene peligros, pero se gana
+  // matando, como siempre. Por eso se mira el objetivo y no la sala.
+  if (!p.enemigos.length && p.estado === 'activa' && !(p.sala && p.sala.objetivo)) {
     p.oleada++
     if (p.oleada >= p.arena.oleadas.length) return terminar(p, 'victoria')
     lanzarOleada(p)
@@ -1338,7 +1342,9 @@ function resumen(p) {
     // telegrafía del servidor no sirve de nada.
     sala: p.sala ? {
       tipo: p.sala.tipo, nombre: p.sala.nombre,
-      objetivo: {
+      // En qué fase va el jefe, para que la pantalla pueda anunciarla.
+      jefeFase: p.sala.jefe ? p.sala.jefe.fase : null,
+      objetivo: !p.sala.objetivo ? null : {
         x: p.sala.objetivo.x, y: p.sala.objetivo.y, radio: p.sala.objetivo.radio,
         icono: p.sala.objetivo.icono, etiqueta: p.sala.objetivo.etiqueta,
         progreso: Math.min(1, (p.sala.objetivo.progreso || 0) / p.sala.objetivo.usarMs),

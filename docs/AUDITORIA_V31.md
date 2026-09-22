@@ -25,6 +25,7 @@ Fecha: 2026-09-21 · Base auditada: commit de importación del zip `criptomundo-
 > - §3.4 cofre, trampa y santuario eran tiradas de dados — **STEP 9**
 > - §5.4 faltaba el flujo de objetos y el volumen de mercado — **STEP 10**
 > - §5.5 **este apartado estaba MAL**, corregido en el **STEP 10**
+> - §3.4 el jefe no tenía mecánica propia — **STEP 11** (ya completo)
 
 Este documento es el resultado de la FASE 0. **No se ha modificado ni una
 línea de gameplay.** Todo lo que sigue está comprobado contra el código o
@@ -369,8 +370,20 @@ de ninguna manera.
 > no se han tocado: lo que cambia es que dependen de lo que haga el
 > jugador. Lo cubre `test-mazmorra-salas.js`, que las juega por HTTP.
 >
-> Sigue pendiente lo otro que dice este apartado: el jefe no tiene
-> arena propia ni mecánica especial.
+> **STEP 11: el jefe ya tiene mecánica propia.** Era una oleada más —un
+> bicho con más vida y un acompañante— peleando igual desde el primer
+> segundo hasta el último. Ahora tiene tres fases: por debajo del 66 %
+> la guarida despierta y cuatro emisores empiezan a barrer la sala, y
+> por debajo del 33 % llama un refuerzo y los emisores aprietan. No hay
+> sistema nuevo: usa los peligros que ya montan las salas de trampa y
+> los enemigos que ya trae la mazmorra.
+>
+> Medido antes y después, peleando pegado al jefe sin esquivar nunca
+> —el caso peor—: la pelea pasa de costar 447 de vida de media a costar
+> 606, y de 160 pasos a 203. Un +36 %. La primera versión salía al
+> doble (867) porque llamaba dos refuerzos; se bajó a uno y el daño de
+> los emisores del 6 % al 4 % de la vida máxima. La recompensa, el
+> botín y el enfriamiento no se han tocado.
 
 
 `src/server/59-mazmorras.js` genera el mapa con semilla y **las salas de
