@@ -21,7 +21,8 @@ Lo que **no** es: no hay token desplegado ni NFTs. `$CGRID` es un saldo interno 
 | Comando | Qué hace |
 |---|---|
 | `npm start` | Arranca el juego |
-| `npm test` | 408 pruebas en diecisiete suites (+20 estabilidad y +17 concurrencia, aparte por lentas) |
+| `npm test` | 1.218 comprobaciones en 48 archivos, en paralelo (~170 s). Aparte por lentas: estabilidad y concurrencia |
+| `npm run test:serie` | Lo mismo de una en una (~450 s), para comparar cuando algo huele a carga |
 | `npm run doctor` | Diagnóstico priorizado de qué mejorar |
 | `npm run simular` | Cohorte de jugadores automatizados |
 | `npm run carga` | Prueba de carga (mide el techo del servidor) |
@@ -60,6 +61,8 @@ Lo que **no** es: no hay token desplegado ni NFTs. `$CGRID` es un saldo interno 
 | `docs/PLAN_VERTICAL_SLICE.md` | Plan de producto y avisos legales |
 | `docs/RESPUESTA_A_LA_PRUEBA.md` | **Qué salió de la prueba con jugadores y el plan** |
 | `docs/PROYECTO.md` | **Documento completo: qué hay, cómo está hecho y qué falta** |
+| `docs/AUDITORIA_V31.md` | **La foto de partida de la v31**: qué estaba roto, qué estaba bien y qué faltaba. No se reescribe |
+| `docs/ENTREGA.md` | **Qué se hizo sobre esa foto**, paso a paso, y qué queda pendiente y por qué |
 | `CHANGELOG.md` | Qué cambió en cada versión y por qué |
 
 ## Estado del proyecto

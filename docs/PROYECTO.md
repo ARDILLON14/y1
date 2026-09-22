@@ -1,7 +1,7 @@
 # CriptoMundo — Documento del proyecto
 
 **Versión 28.0.0** · Un solo ejecutable, cero dependencias npm, Node.js 18+
-408 pruebas automatizadas en diecisiete suites, todas en verde.
+1.218 comprobaciones automatizadas en 48 archivos, todas en verde.
 
 ---
 
@@ -108,7 +108,7 @@ assets/skins/                  → imágenes de personajes
 
 Se trabaja en `src/` y el archivo único se genera con `node build.js`. **Nunca se edita `criptomundo.js` a mano**: `build.js --check` falla si está desfasado, y verifica que la versión del código coincida con `package.json`.
 
-**52 endpoints** de API. Tres inyectores (`aplicar-css-movil`, `aplicar-red-cliente`, `aplicar-avisos`) mantienen bloques compartidos en las 18 páginas desde un solo sitio.
+**65 endpoints** de API. Tres inyectores (`aplicar-css-movil`, `aplicar-red-cliente`, `aplicar-avisos`) mantienen bloques compartidos en las 15 páginas desde un solo sitio.
 
 ---
 
@@ -117,7 +117,7 @@ Se trabaja en `src/` y el archivo único se genera con `node build.js`. **Nunca 
 | Comando | Qué hace |
 |---|---|
 | `npm start` | Arranca el juego |
-| `npm test` | 408 pruebas en diecisiete suites |
+| `npm test` | 1.218 comprobaciones en 48 archivos, en paralelo (~170 s) |
 | `npm run doctor` | Diagnóstico priorizado: juega una partida y dice qué mejorar |
 | `npm run simular` | Cohorte de jugadores automatizados que llena embudo y economía |
 | `npm run carga` | Prueba de carga: mide el techo del servidor |
