@@ -103,6 +103,7 @@ async function run() {
 }
 
 if (process.argv.includes('--spawn')) {
+  limpiarDatos('/tmp/cm-inv-abierto.json', '/tmp/cm-inv-cerrado.json', '/tmp/cm-inv-b1', '/tmp/cm-inv-b2')
   const abierto = spawn('node', [__dirname + '/criptomundo.js'],
     { env: { ...process.env, PORT: String(PORT), DATA_FILE: '/tmp/cm-inv-abierto.json', BACKUP_DIR: '/tmp/cm-inv-b1' }, stdio: 'ignore' })
   const cerrado = spawn('node', [__dirname + '/criptomundo.js'],
@@ -111,5 +112,46 @@ if (process.argv.includes('--spawn')) {
   // ejecutarse y los DOS servidores quedaban vivos ocupando sus
   // puertos. 'exit' sí se dispara con process.exit().
   process.on('exit', () => { try { abierto.kill(); cerrado.kill() } catch {} })
-  setTimeout(() => run().finally(() => { abierto.kill(); cerrado.kill() }), 3500)
+  // Esta prueba levanta DOS servidores, uno abierto y otro solo por
+  // invitación. Hay que esperar a los dos: con la suite en paralelo, el
+  // segundo puede tardar más que el primero y la prueba se lanzaría
+  // contra un puerto que todavía no escucha.
+  Promise.all([esperarServidor(PORT), esperarServidor(PORT_CERRADO)])
+    .then(() => run().finally(() => { abierto.kill(); cerrado.kill() }))
 } else run()
+
+// Espera a que el servidor CONTESTE, en vez de dar por hecho que en unos
+// milisegundos ya estará arriba.
+//
+// Esa suposición se cae en cuanto la suite corre en paralelo: varios
+// servidores levantando a la vez tardan más, y el síntoma era un
+// ECONNREFUSED que parecía un fallo de la prueba y no lo era.
+function esperarServidor(puerto, ms) {
+  const hasta = Date.now() + (ms || 30000)
+  return new Promise(resolve => {
+    const probar = () => {
+      const r = require('http').get({ host: 'localhost', port: puerto, path: '/api/health' }, res => {
+        res.resume()
+        resolve(true)
+      })
+      r.on('error', () => { if (Date.now() > hasta) resolve(false); else setTimeout(probar, 120) })
+      r.setTimeout(1500, () => r.destroy())
+    }
+    probar()
+  })
+}
+
+// Empieza siempre de cero.
+//
+// Sin esto, una prueba hereda el mundo que dejó la ejecución anterior:
+// publicaciones a medio vender, personajes con nivel, enfriamientos sin
+// cumplir. Lo destapó test-economia-objetos, que compraba dos unidades de
+// una publicación que la vez anterior había dejado en una, y contestaba
+// "Cantidad inválida" sin que hubiera nada roto.
+function limpiarDatos() {
+  const fs = require('fs')
+  for (const ruta of arguments) {
+    try { fs.rmSync(ruta, { recursive: true, force: true }) } catch {}
+    try { fs.rmSync(ruta + '.tmp', { force: true }) } catch {}
+  }
+}

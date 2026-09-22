@@ -29,6 +29,8 @@ Fecha: 2026-09-21 · Base auditada: commit de importación del zip `criptomundo-
 > - §0 el ruido del arranque (3 a 6 muertes para lo mismo) — **STEP 12**
 > - §0 `test-movimiento` intermitente, y un fallo real detrás — **STEP 12**
 > - §5.3 el camino de animación de arma no lo había probado nadie — **STEP 13**
+> - §5.7 la suite no se podía ejecutar en paralelo — **STEP 14**
+> - §0 la suite encadenada con `&&` tapaba fallos — **STEP 14**
 
 Este documento es el resultado de la FASE 0. **No se ha modificado ni una
 línea de gameplay.** Todo lo que sigue está comprobado contra el código o
@@ -622,6 +624,34 @@ No afecta a jugar, solo a probar. Pero cuesta horas de diagnóstico y,
 peor, hace dudar de fallos que sí son reales.
 
 ### 5.7 La suite no se puede ejecutar en paralelo
+
+> ✅ **Resuelto en el STEP 14, y el motivo que daba este apartado era
+> equivocado.** El límite de registro por IP no impide nada: cada archivo
+> de prueba arranca su PROPIO servidor y el contador de ese límite vive en
+> la memoria de cada proceso. Lo que sí había eran servidores huérfanos de
+> pruebas anteriores, y eso se arregló en el STEP 1. Comprobado además
+> que ningún par de pruebas comparte puerto ni archivo de datos.
+>
+> El obstáculo real era otro y no estaba en este apartado: cada prueba
+> esperaba un número fijo de milisegundos a que su servidor arrancara. Con
+> varios levantando a la vez eso no basta, y el síntoma —`ECONNREFUSED`—
+> parece un fallo de la prueba. Ahora las 45 esperan a que el servidor
+> CONTESTE.
+>
+> Medido con el mismo lanzador, mismo resultado en los dos casos —45
+> archivos, 1.139 comprobaciones, 0 fallos—:
+>
+> | | En serie | En paralelo |
+> |---|---|---|
+> | Suite completa | 447 s | 168 s |
+>
+> (Que el paralelismo no cambie el resultado es la mitad del trabajo:
+> una suite más rápida que además decide distinto no sirve de nada.)
+>
+> `run-tests.js` reemplaza además la cadena de `&&` de package.json, que
+> paraba en el primer fallo y tapaba todo lo que venía detrás. Las tres
+> pruebas que miden tiempo van solas al final, porque el paralelismo
+> ensucia de verdad lo que miden.
 
 El registro está limitado a 20 cuentas por hora y por IP
 (`REGISTER_LIMIT_PER_HOUR`). Varios archivos de prueba a la vez contra

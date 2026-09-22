@@ -4,6 +4,68 @@ Cada versión con lo que la motivó. Los detalles completos están en `docs/CAMB
 
 ## v32 (en curso) — El mundo deja de pelear consigo mismo
 
+### La suite tardaba media hora y paraba en el primer fallo
+
+Eran dos problemas de la misma línea de `package.json`: cuarenta y tantos
+comandos encadenados con `&&`.
+
+El primero es que el primer fallo se lleva por delante a todos los que
+vienen detrás. Un archivo en rojo tapaba treinta resultados, y no había
+forma de saber si estaba roto uno o treinta y uno sin volver a lanzarlo
+todo.
+
+El segundo es que iba en serie. Cada archivo arranca su propio servidor,
+y la auditoría había dejado escrito que la suite no se podía paralelizar
+porque el límite de registro por IP se lo comerían entre todas.
+
+Ese motivo no se sostiene, y conviene decirlo porque es el segundo
+apartado de la auditoría que sale equivocado: cada prueba arranca su
+PROPIO servidor y el contador de ese límite vive en la memoria de cada
+proceso. Lo que sí había eran servidores huérfanos, y eso se arregló hace
+ya varios pasos.
+
+El obstáculo real era otro y no estaba en ese apartado. Cada prueba
+esperaba un número fijo de milisegundos —entre 1.500 y 3.500— a que su
+servidor arrancara. Con varios levantando a la vez eso no basta, y el
+síntoma es un `ECONNREFUSED` que parece un fallo de la prueba y no lo es.
+Salió en cuanto se probó de verdad: `test-movil` se cayó en el primer
+intento en paralelo.
+
+Ahora las cuarenta y cinco esperan a que el servidor CONTESTE, no a que
+pase un rato. Y `run-tests.js` reemplaza la cadena de `&&`: lanza varias
+a la vez, no para en el primer fallo, y al final enseña juntas las líneas
+rojas de todo lo que haya caído. Las tres pruebas que miden tiempo
+—velocidad, ventanas de golpe, duraciones de animación— van solas al
+final, porque el paralelismo ensucia de verdad lo que miden.
+
+Con el mismo lanzador y el mismo resultado en los dos casos, 45 archivos
+y 1.139 comprobaciones sin un solo fallo:
+
+| | En serie | En paralelo |
+|---|---|---|
+| Suite completa | 447 s | 168 s |
+
+Que el paralelismo no cambie el resultado es la mitad del trabajo. Una
+suite más rápida que además decide distinto no serviría de nada.
+
+### Y una prueba que heredaba el mundo de la ejecución anterior
+
+Paralelizar destapó otra cosa. `test-economia-objetos` publicaba tres
+unidades en el mercado y compraba dos, y de pronto empezó a contestar
+"Cantidad inválida". No había nada roto: el archivo de datos de la prueba
+no se borraba entre ejecuciones, así que el mercado seguía teniendo la
+publicación de la vez anterior —con una sola unidad ya— y la prueba
+compraba sobre esa.
+
+Funcionaba porque yo borraba ese archivo a mano cada vez que la lanzaba
+suelta. El lanzador no lo hacía, y eso es justo lo que pasa cuando algo
+depende de un gesto que no está escrito en ninguna parte.
+
+Ahora las cuarenta y cuatro pruebas con archivo de datos propio lo borran
+antes de arrancar su servidor. Y la del mercado busca SU publicación en
+vez de la primera que aparezca: empezar de cero lo arregla también, pero
+una prueba no debería depender de eso para saber cuál es la suya.
+
 ### La cuarta vez que la misma clase de defecto aparece en una prueba
 
 `test-sesiones-persisten` daba un golpe a una araña y exigía que le

@@ -116,6 +116,7 @@ async function run() {
 }
 
 if (process.argv.includes('--spawn')) {
+  limpiarDatos('/tmp/cm-estabilidad.json', '/tmp/cm-est-b')
   const c = spawn('node', [path.join(__dirname, 'criptomundo.js')],
     { env: { ...process.env, PORT, ADMIN_TOKEN: TOKEN, DATA_FILE: '/tmp/cm-estabilidad.json', BACKUP_DIR: '/tmp/cm-est-b' }, stdio: 'ignore' })
   // El servidor se mataba en un .finally() detrás de run(), y run()
@@ -126,5 +127,41 @@ if (process.argv.includes('--spawn')) {
   // la anterior— y fallaba por cosas que no tenían nada que ver.
   // 'exit' sí se dispara con process.exit().
   process.on('exit', () => { try { c.kill() } catch {} })
-  setTimeout(() => run().finally(() => c.kill()), 3000)
+  esperarServidor(PORT).then(() => run().finally(() => c.kill()))
 } else run()
+
+// Espera a que el servidor CONTESTE, en vez de dar por hecho que en unos
+// milisegundos ya estará arriba.
+//
+// Esa suposición se cae en cuanto la suite corre en paralelo: varios
+// servidores levantando a la vez tardan más, y el síntoma era un
+// ECONNREFUSED que parecía un fallo de la prueba y no lo era.
+function esperarServidor(puerto, ms) {
+  const hasta = Date.now() + (ms || 30000)
+  return new Promise(resolve => {
+    const probar = () => {
+      const r = require('http').get({ host: 'localhost', port: puerto, path: '/api/health' }, res => {
+        res.resume()
+        resolve(true)
+      })
+      r.on('error', () => { if (Date.now() > hasta) resolve(false); else setTimeout(probar, 120) })
+      r.setTimeout(1500, () => r.destroy())
+    }
+    probar()
+  })
+}
+
+// Empieza siempre de cero.
+//
+// Sin esto, una prueba hereda el mundo que dejó la ejecución anterior:
+// publicaciones a medio vender, personajes con nivel, enfriamientos sin
+// cumplir. Lo destapó test-economia-objetos, que compraba dos unidades de
+// una publicación que la vez anterior había dejado en una, y contestaba
+// "Cantidad inválida" sin que hubiera nada roto.
+function limpiarDatos() {
+  const fs = require('fs')
+  for (const ruta of arguments) {
+    try { fs.rmSync(ruta, { recursive: true, force: true }) } catch {}
+    try { fs.rmSync(ruta + '.tmp', { force: true }) } catch {}
+  }
+}
