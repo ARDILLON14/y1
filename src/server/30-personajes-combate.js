@@ -571,6 +571,69 @@ const ESCALA_TURNOS = { vida: 1.6, daño: 1.4, seguimiento: 1 }
 // qué monstruo puede pelear cada quién.
 const CURA_AL_MORIR = 0.5
 
+// ── Recuperarse fuera de combate ───────────────────────────────────
+//
+// No existía NINGUNA forma de recuperar vida salvo morir, y eso no es
+// dificultad: es un bucle roto.
+//
+// Los números del arranque, medidos: un personaje de nivel 1 tiene 1.150
+// de vida, mata a una araña en 5,2 turnos y muere en 12,5, o sea que una
+// pelea la gana con holgura. Lo que no puede es encadenarlas: cada araña
+// le cuesta 478 de vida, y entre combate y combate no recupera nada. Con
+// las tres pociones de inicio da para 3,8 arañas, y a partir de ahí
+// MORIR ES EL REMEDIO MÁS BARATO QUE HAY: cuesta el 8 % del oro y
+// devuelve la mitad de la vida, mientras que una poción cuesta 20 de oro
+// y devuelve 220. Dicho de otro modo, el juego premiaba dejarse matar.
+//
+// Esto no hace más fácil ninguna pelea: el daño, la vida y el enemigo son
+// exactamente los mismos. Lo que cambia es que descansar sirve para algo,
+// y por tanto dejarse matar deja de ser la jugada.
+//
+// El ritmo NO se elige a ojo: se ancla a lo que cuesta una pelea.
+//
+// Una araña le cuesta a un nivel 1 el 42 % de su vida. Para que alternar
+// pelea y descanso se sostenga, recuperar ese 42 % tiene que llevar más o
+// menos lo que lleva la pelea: alrededor de un minuto de reloj. Eso sale
+// a 1 % cada segundo y medio, o sea del suelo al tope en dos minutos y
+// medio.
+//
+// El primer intento fueron 4 segundos por punto, y la medición lo tumbó:
+// veinte segundos de descanso devolvían 57 de vida contra los 478 que
+// cuesta una araña, así que descansar seguía sin ser una opción y morir
+// seguía siendo la jugada. El mecanismo estaba bien y el número no.
+//
+// Sigue siendo mucho más lento que beber —una poción devuelve 220 de
+// golpe— así que las pociones no pierden sentido. Y no regenera dentro de
+// una batalla abierta: quedarse quieto a mitad de pelea no cura, porque
+// la batalla sigue ACTIVA hasta que se mata al bicho o se huye.
+const REGEN_FRACCION = 0.01
+const REGEN_CADA_MS = 1500
+
+// Se calcula al leer, no con un reloj.
+//
+// Un temporizador que recorriera a todos los jugadores cada pocos
+// segundos gasta lo mismo con uno conectado que con mil, y además se
+// desincroniza cuando el proceso va cargado. Mirando el tiempo
+// transcurrido desde la última vez sale el mismo resultado, exacto, y
+// solo cuesta algo cuando alguien pregunta.
+function regenerarFuera(char, ocupado) {
+  if (!char) return
+  const t = now()
+  const antes = char.ultimaRegen || t
+  char.ultimaRegen = t
+  // Muerto no se regenera: para eso está levantarse. Y en mitad de algo
+  // tampoco, o el combate por turnos se volvería inganable para el
+  // enemigo y la arena llevaría dos vidas distintas a la vez.
+  if (ocupado || char.hp <= 0) return
+  const pasos = Math.floor((t - antes) / REGEN_CADA_MS)
+  if (pasos <= 0) { char.ultimaRegen = antes; return }
+  const st = effectiveStats(char)
+  const curado = Math.round(st.maxHp * REGEN_FRACCION) * pasos
+  const manado = Math.round(st.maxMp * REGEN_FRACCION) * pasos
+  char.hp = Math.min(st.maxHp, char.hp + curado)
+  char.mp = Math.min(st.maxMp, char.mp + manado)
+}
+
 function startBattle(char, monsterId) {
   const m = MONSTERS[monsterId]
   if (!m) return null

@@ -210,6 +210,14 @@ async function handleAPI(req, res, pathname, query) {
   if (!p && !(req.method === 'GET' && publicGet.includes(pathname))) return fail(res, 'No autorizado', 401)
   const char = p?.character
   if (p) touchSession(p.username)
+  // Recuperarse fuera de combate. Va aquí, en el único sitio por el que
+  // pasan todas las peticiones con sesión, para que no haya dos maneras
+  // de calcularlo. Se salta si el jugador está en mitad de algo: una
+  // batalla por turnos abierta, una partida de arena o una mazmorra.
+  if (char) {
+    const enTurnos = Object.values(store.battles).some(b => b.owner === char.id && b.state === 'ACTIVE')
+    regenerarFuera(char, enTurnos || partidas.has(p.username) || runs.has(p.username))
+  }
 
   // ══════════ PRIMEROS PASOS ══════════
   if (pathname === '/api/onboarding' && req.method === 'GET') {

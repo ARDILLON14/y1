@@ -4,6 +4,55 @@ Cada versión con lo que la motivó. Los detalles completos están en `docs/CAMB
 
 ## v32 (en curso) — El mundo deja de pelear consigo mismo
 
+### El juego premiaba dejarse matar
+
+Me pediste que decidiera yo la dificultad del arranque. Antes de tocar
+ningún número fui a mirar qué forma tiene de verdad ese combate, y lo que
+salió no era un problema de dificultad.
+
+Un personaje de nivel 1 tiene 1.150 de vida, mata a una araña en 5,2
+turnos y muere en 12,5. O sea que **una pelea la gana con holgura**. Lo
+que no puede es encadenarlas: cada araña le cuesta 478 de vida y entre
+combate y combate no recuperaba nada.
+
+Y ahí está lo que de verdad estaba roto: **no existía ninguna forma de
+recuperar vida salvo morir**. Con las tres pociones de inicio daba para
+3,8 arañas, y a partir de ahí morir era el remedio más barato del juego:
+el 8 % del oro a cambio de media vida, frente a 20 de oro por 220 de
+curación de una poción. Dicho claro, el juego premiaba dejarse matar. Eso
+no es dificultad, es un bucle sin cerrar.
+
+Así que no he tocado ni el daño, ni la vida, ni los monstruos. He cerrado
+el bucle: fuera de combate se recupera vida y maná poco a poco.
+
+**El ritmo no lo elegí a ojo, y el primer intento estuvo mal.** Puse 1 %
+del tope cada cuatro segundos y lo medí: veinte segundos de descanso
+devolvían 57 de vida contra los 478 que cuesta una araña. Descansar
+seguía sin ser una opción y morir seguía siendo la jugada. El mecanismo
+estaba bien y el número no.
+
+Anclado a lo que cuesta una pelea —recuperar ese 42 % debe llevar más o
+menos lo que lleva la pelea, alrededor de un minuto— sale 1 % cada
+segundo y medio. Del suelo al tope, dos minutos y medio. Sigue siendo
+mucho más lento que beber, así que las pociones no pierden sentido.
+
+Medido con tres partidas de cada clase, de nivel 1 a nivel 3:
+
+| Cómo se juega | Muertes antes | Muertes ahora |
+|---|---|---|
+| Peleando sin parar | 3,3 | 4,3 |
+| Descansando un minuto entre peleas | — | 0,3 |
+
+La primera fila es la importante: **peleando sin parar no cambia nada**,
+dentro del ruido de la medición. Ninguna pelea es más fácil. Lo que
+cambia es que ahora descansar sirve para algo, y por tanto dejarse matar
+deja de ser la jugada óptima.
+
+Dos agujeros evidentes, cerrados y con prueba: no se regenera con una
+batalla abierta —si no, bastaría con dejar de atacar para curarse gratis
+en mitad de la pelea— ni dentro de la arena, que lleva su propia cuenta
+de la vida.
+
 ### Una partida entera, de registrarse a vender en el mercado
 
 Cada sistema tenía su prueba y todas pasaban. Lo que no tenía prueba era
