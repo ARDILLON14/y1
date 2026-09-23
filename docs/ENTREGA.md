@@ -8,8 +8,8 @@ La foto de partida está en `docs/AUDITORIA_V31.md` y no se reescribe: sirve
 para comparar. El relato largo de cada cambio, con el porqué, está en
 `CHANGELOG.md`.
 
-**Estado al cerrar:** 50 archivos de prueba · 1.254 comprobaciones · 0 fallos
-· ~190 s con `npm test`.
+**Estado al cerrar:** 52 archivos de prueba · 1.319 comprobaciones · 0 fallos
+· ~196 s con `npm test`.
 
 ---
 
@@ -397,6 +397,146 @@ escrita en milisegundos.
 
 ---
 
+## STEP 21 — La dificultad estaba en dos mecánicas que nadie contaba
+
+**ARCHIVOS TOCADOS** · `src/server/45-primeros-pasos.js`,
+`src/server/50-telemetria.js`, `src/server/30-personajes-combate.js`,
+`src/server/60-http.js`, `src/pages/criptomundo-combat-2.js`,
+`test-ensenar-combate.js` (nuevo), `run-tests.js`,
+`test-arena-ventanas.js`.
+
+**QUÉ SE COMPROBÓ ANTES DE TOCAR NADA** · el proyecto trae tres
+herramientas de diagnóstico propias y no se había ejecutado ninguna.
+`revisar-codigo-muerto`: nada. `revisar-materiales`: todas las recetas se
+pueden completar; solo sobra un objeto del catálogo que no pide nadie, el
+Corazón de Savia. `banco-balance` es la que importa: un robot que
+**bloquea el golpe anunciado y se cura por debajo de un tercio de vida**
+gana el **100 %** de las peleas del juego, jefes incluidos, y termina con
+entre el 43 % y el 94 % de vida. En las arenas, igual. Y las mediciones
+del arranque dicen que un nivel 1 que no hace esas dos cosas muere cuatro
+veces antes de llegar al nivel 3.
+
+**DIAGNÓSTICO** · la dificultad de CriptoMundo no estaba en sus números.
+Estaba en dos mecánicas, y el tutorial tenía once pasos y no mencionaba
+ninguna. El bloqueo se enseñaba a medias —la pantalla resalta el botón
+cuando el enemigo anuncia—; beber no se enseñaba en absoluto.
+
+**QUÉ SE AÑADIÓ** · dos pasos de primeros pasos (`p_bloquear` y
+`p_pocion`, 120 oro cada uno) justo detrás del de combatir; sus dos
+sucesos en el embudo (`first_block`, `first_potion`), que hasta ahora no
+se podían medir; y un aviso de vida baja en el combate por turnos, que
+cede el sitio al aviso de golpe anunciado cuando coinciden.
+
+**NO SE TOCÓ NI UN NÚMERO DE COMBATE.** A propósito: el problema medido
+era de enseñanza, no de equilibrio.
+
+**PRUEBAS AÑADIDAS** · `test-ensenar-combate.js` (15).
+
+**TRES FALLOS MÍOS, ENCONTRADOS Y ARREGLADOS**
+- Escribí `out.usoObjeto` antes de declarar `out`: beber en combate
+  devolvía «Cannot access 'out' before initialization». Roto del todo.
+- El aviso de vida baja leía `PLAYER`, que no existe en todos los
+  ámbitos: un `ReferenceError` por fotograma se llevaba por delante la
+  pantalla de turnos entera. Ahora la vida máxima la manda el servidor
+  con cada turno.
+- El lanzador decía «0 fallidas» con un archivo en rojo: un archivo que
+  revienta no imprime resumen, así que sumaba cero. Ahora se cuentan
+  aparte y se nombran.
+
+**Y UNO QUE NO ERA MÍO** · `test-arena-ventanas` fallaba por un motivo
+que no era el que supuse dos veces. Instrumentándolo: cada sondeo mandaba
+`atacar: false`, que llegaba antes del paso de 100 ms del servidor y
+**cancelaba el ataque**. La prueba se estaba peleando con su propia
+intención.
+
+**PRUEBAS QUE PASAN** · 51 archivos · 1.269 comprobaciones · 0 fallos.
+**SIGUIENTE** · STEP 22.
+
+---
+
+## STEP 22 — Seis de los siete aspectos se deslizaban
+
+Este es de los que pide la FASE 22: explicar antes de tocar.
+
+**COMPORTAMIENTO ACTUAL** · en el mapa, el personaje es un emoji al que
+al moverse solo se le cambia la posición y se le voltea a izquierda o
+derecha. Se desplaza como una pieza de ajedrez. Lo mismo los demás
+jugadores.
+
+**PROBLEMA** · `npm run arte` dice que faltan 77 dibujos y que los seis
+que más se notan son las animaciones de caminar. Solo la Zarigüeya
+Laureada tiene tira de fotogramas.
+
+**CAUSA RAÍZ** · no es que falte arte. La animación se escribió como «si
+hay tira, reprodúcela», y el camino de al lado —el que se recorre casi
+siempre— no tiene respaldo: no hay nada. Y había un dato desperdiciado:
+el cliente manda `anim` (walk o idle) con cada pulso del mundo compartido
+y el servidor lo devuelve con cada vecino desde que ese sistema existe.
+La pantalla nunca lo leyó.
+
+**ARREGLO PROPUESTO** · un respaldo procedural. No dibuja piernas —eso
+son 77 archivos que no puedo hacer yo— pero mueve el cuerpo como se mueve
+al andar: sube y baja con cada apoyo, se ladea hacia la pierna que pisa,
+se achata al plantar el pie y la sombra se estrecha cuando el cuerpo está
+arriba. Se apaga solo en cuanto un aspecto traiga su tira de verdad.
+
+**ARCHIVOS TOCADOS** · `src/pages/criptomundo-mundo2d-andar.js` (nuevo),
+`src/pages/criptomundo-mundo2d-2.js`, `src/pages/criptomundo-mundo2d-5.js`,
+`build.js`, `run-tests.js`, `test-andar.js` (nuevo), `README.md`,
+`CHANGELOG.md`.
+
+**QUÉ SE ARREGLÓ** · el deslizamiento, en tu personaje y en el de los
+demás. Y de paso el `anim` que el servidor mandaba y nadie leía.
+
+**QUÉ SE AÑADIÓ** · `pasoAndar`, `pasoAndarNuevo` y `pasoAndarPintar`, en
+su propio módulo. Son función pura más aplicador: por eso se pueden
+probar sin navegador.
+
+**TRES DECISIONES, Y POR QUÉ**
+- La cadencia la marca la **distancia recorrida**, no el reloj. Con un
+  temporizador, andar despacio con el mando táctil se vería como patalear
+  en el sitio. Está anclada a las nubecillas de polvo: un apoyo por
+  nubecilla a velocidad máxima.
+- La cámara sigue al personaje, así que el bote del cuerpo se lo comía el
+  encuadre y **temblaba el mapa entero**. El desvío de la cámara le
+  descuenta exactamente lo que sube el cuerpo.
+- La etiqueta con el nombre de los vecinos **no bota**: un nombre
+  temblando encima de la cabeza se lee peor.
+
+**DOS FALLOS MÍOS, ENCONTRADOS POR LA PRUEBA**
+- El apagado era exponencial y no terminaba nunca: medido, el cuerpo
+  seguía botando **1.072 ms** después de soltar la tecla, seis veces lo
+  que decía la constante que se llama «apagado». Ahora sube y baja a
+  ritmo constante y se posa en los 180 ms que anuncia.
+- El desvío de la cámara solo se ponía en el camino del respaldo. El
+  aspecto se carga por la red y llega tarde, así que el respaldo corre un
+  rato antes: sin ponerlo también a cero, el encuadre se quedaba torcido
+  hasta 3 px para siempre.
+
+**PRUEBAS AÑADIDAS** · `test-andar.js` (50). Contra el código anterior se
+para en la cuarta comprobación: el módulo no existe.
+
+**SE COMPROBÓ QUE DETECTA** · se cambió la cadencia a que la marcara el
+reloj en vez de la distancia. Saltaron exactamente las dos comprobaciones
+que dicen medirlo, y ninguna otra.
+
+**LO QUE NO SE PUEDE PROBAR, Y NO SE FINGE** · que quede bonito. Lo que
+se prueba es lo que sí se puede: que quieto sea exactamente quieto, que
+al parar vuelva al reposo y se quede ahí, que la cadencia dependa de la
+distancia, que el balanceo no dé un salto al envolverse la fase, que los
+números estén acotados, que la basura de entrada no salga como NaN a la
+pantalla, y que los vecinos lo usen de verdad.
+
+**SE SABE QUE** · empujando contra una pared el cuerpo se posa en vez de
+seguir andando en el sitio, porque la cadencia es por distancia y ahí no
+se recorre nada. Es defendible y es lo que hace este diseño; si se
+prefiere lo contrario, la condición está en una sola línea.
+
+**PRUEBAS QUE PASAN** · 52 archivos · 1.319 comprobaciones · 0 fallos.
+**SIGUIENTE** · nada pendiente por mi parte. Ver abajo.
+
+---
+
 ## Lo que queda, y por qué no lo he hecho yo
 
 Los tres puntos que quedaban se han atacado. Lo que sigue abierto es más
@@ -404,8 +544,10 @@ corto y más claro.
 
 **Dibujar el arte.** 77 archivos, y no puedo hacerlos yo. `npm run arte`
 dice cuáles, dónde y con qué medidas, y avisa si lo que se deja no mide lo
-que debe. Los seis que más se notan son las animaciones de caminar: seis
-de las siete skins se deslizan sin mover las piernas.
+que debe. Lo que sí se ha podido hacer es que la falta se note menos: seis
+de las siete skins ya no se deslizan, porque el cuerpo se mueve al andar
+aunque no haya piernas dibujadas (STEP 22). El dibujo sigue faltando; el
+movimiento ya no.
 
 **Decidir si el equilibrio está donde lo quieres.** Yo he quitado el ruido
 y he cerrado el bucle que faltaba, pero no he movido la dificultad hacia

@@ -2747,6 +2747,133 @@ html,body{width:100%;height:100%;overflow:hidden;background:#05070A;}
 // El mapa es la página más larga: se parte en dos módulos para que
 // ningún archivo del proyecto pase del límite que vigila test-build.
 
+// Andar cuando no hay tira de dibujos.
+//
+// QUÉ PASABA
+// Siete aspectos y una sola tira de caminar (la zarigüeya). Los otros
+// seis se dibujan con un emoji al que, al moverse, solo se le cambia la
+// posición y se le voltea a izquierda o derecha. Es decir: el personaje
+// se desliza por el mapa como una pieza de ajedrez. Y lo mismo pasa con
+// los demás jugadores: el servidor ya manda 'anim' con cada vecino
+// —walk o idle— y esta pantalla nunca lo leyó.
+//
+// LA CAUSA
+// La animación se escribió como "si hay tira, reprodúcela". El camino
+// de al lado, el que se recorre casi siempre, no existe: no hay
+// respaldo, hay nada.
+//
+// QUÉ HACE ESTO
+// No dibuja piernas —eso son 77 archivos que no puedo hacer yo— pero
+// mueve el cuerpo como se mueve al andar: sube y baja con cada apoyo,
+// se ladea hacia la pierna que pisa, se achata al plantar el pie y la
+// sombra se estrecha cuando el cuerpo está arriba. Con eso deja de
+// deslizarse.
+//
+// TRES DECISIONES, Y POR QUÉ
+//
+//   · La cadencia la marca la DISTANCIA recorrida, no el reloj. Si vas
+//     despacio —el mando táctil a medio empujar— los pasos se dan
+//     despacio. Con un temporizador, andar despacio se vería como
+//     patalear en el sitio.
+//   · La fuerza entra y sale poco a poco. Al soltar la tecla el cuerpo
+//     se posa en vez de congelarse a media zancada.
+//   · Se apaga solo. En cuanto un aspecto traiga su tira de verdad,
+//     existe playerSprite y nada de esto se aplica. No hay que quitarlo
+//     después ni hay dos animaciones peleando.
+//
+// NO DECIDE NADA DEL JUEGO. Ni posición, ni colisión, ni velocidad: de
+// eso sigue mandando el servidor. Esto solo elige cómo se pinta lo que
+// ya se decidió, y por eso vive en la pantalla y no en el servidor.
+PAGES['criptomundo-mundo2d.html'] += `<script>
+
+// Píxeles por zancada completa (los dos pies). Está anclado a las
+// nubecillas de polvo: salen cada 200 ms y a velocidad máxima se
+// recorren unos 34 px en ese rato, o sea un apoyo por nubecilla.
+var ANDAR_PASO_PX = 68
+var ANDAR_SUBIDA  = 3      // píxeles que sube el cuerpo a media zancada
+var ANDAR_LADEO   = 4      // grados de balanceo
+var ANDAR_APAGADO = 180    // ms en pasar de quieto a andando y al revés
+
+function pasoAndarNuevo() { return { fase: 0, fuerza: 0 } }
+
+// El reposo. Se devuelve tal cual cuando no hay estado o cuando lo que
+// llega no son números: una pantalla nunca debe romperse por esto.
+function pasoAndarQuieto() {
+  return { subida: 0, ladeo: 0, anchoX: 1, altoY: 1, sombra: 1 }
+}
+
+// estado    { fase, fuerza }, se modifica en el sitio
+// andando   si el cuerpo se está moviendo (lo dice quien llama)
+// dist      píxeles recorridos desde el fotograma anterior
+// dt        milisegundos desde el fotograma anterior
+function pasoAndar(estado, andando, dist, dt) {
+  if (!estado) return pasoAndarQuieto()
+
+  var d = Number(dist)
+  var ms = Number(dt)
+  if (!isFinite(d) || d < 0) d = 0
+  if (!isFinite(ms) || ms < 0) ms = 0
+  var mueve = !!andando && d > 0.01
+
+  // La fase da una vuelta por zancada. Se envuelve en 2π para que no
+  // crezca sin fin y para que el balanceo, que es un seno de la fase,
+  // no dé un salto al envolverse: sin(0) y sin(2π) son el mismo punto.
+  var VUELTA = Math.PI * 2
+  if (mueve) {
+    estado.fase = (estado.fase + (d / ANDAR_PASO_PX) * VUELTA) % VUELTA
+    if (!isFinite(estado.fase)) estado.fase = 0
+  }
+
+  // La fuerza sube y baja a ritmo CONSTANTE, no acercándose a un
+  // objetivo por fracciones. Con lo segundo —que fue lo primero que
+  // escribí— la cola es exponencial y no termina nunca: medido, el
+  // cuerpo seguía botando 1.072 ms después de soltar la tecla, seis
+  // veces lo que dice la constante que se llama "apagado". Así el
+  // número significa lo que dice: tarda ANDAR_APAGADO en arrancar y lo
+  // mismo en posarse, y se posa del todo.
+  var avance = ANDAR_APAGADO > 0 ? ms / ANDAR_APAGADO : 1
+  var meta = mueve ? 1 : 0
+  if (!isFinite(estado.fuerza)) estado.fuerza = 0
+  if (estado.fuerza < meta) estado.fuerza = Math.min(meta, estado.fuerza + avance)
+  else if (estado.fuerza > meta) estado.fuerza = Math.max(meta, estado.fuerza - avance)
+
+  var f = estado.fuerza
+  if (f === 0) return pasoAndarQuieto()
+
+  // Dos apoyos por zancada: el cuerpo sube en medio de cada una y toca
+  // el suelo al plantar el pie. El balanceo es el mismo seno con signo,
+  // así que se ladea hacia el lado del pie que aguanta.
+  var seno = Math.sin(estado.fase)
+  var alto = Math.abs(seno)
+  var planta = 1 - alto          // 1 justo al plantar el pie
+
+  return {
+    subida: alto * ANDAR_SUBIDA * f,
+    ladeo:  seno * ANDAR_LADEO * f,
+    anchoX: 1 + planta * 0.06 * f,
+    altoY:  1 - planta * 0.08 * f,
+    sombra: 1 - alto * 0.22 * f,
+  }
+}
+
+// Ponerle el paso a un cuerpo cualquiera: el tuyo o el de un vecino.
+// Se le pasa el dibujo, la sombra (o null), hacia dónde mira y el
+// resultado de pasoAndar. Todo va entre try porque un fallo aquí no
+// puede llevarse por delante el bucle del mundo.
+function pasoAndarPintar(cuerpo, sombra, sentido, p, escala) {
+  if (!cuerpo || !p) return
+  var s = sentido < 0 ? -1 : 1
+  var e = isFinite(Number(escala)) && Number(escala) > 0 ? Number(escala) : 1
+  try {
+    cuerpo.setScale(s * p.anchoX * e, p.altoY * e)
+    cuerpo.setAngle(p.ladeo * s)
+  } catch (err) { /* el cuerpo se queda como estaba */ }
+  try {
+    if (sombra) sombra.setScale(p.sombra, p.sombra)
+  } catch (err) { /* la sombra se queda como estaba */ }
+}
+</script>`
+
 PAGES['criptomundo-mundo2d.html'] += `<script>
 // ═══════════════════════════════════════════════════
 // GAME DATA
@@ -3384,15 +3511,43 @@ class WorldScene extends Phaser.Scene {
     // Colisión con los edificios: se prueba cada eje por separado para
     // poder deslizarse a lo largo de una pared en vez de quedarse
     // clavado al tocarla en diagonal.
+    const antesX = this.px, antesY = this.py
     if (!this.chocaCon(nx, this.py)) this.px = nx
     if (!this.chocaCon(this.px, ny)) this.py = ny
 
-    this.playerText.setPosition(this.px, this.py)
     this.playerShadow.setPosition(this.px, this.py + 16)
 
-    // Walking animation (flip)
-    if (dx < 0) this.playerText.setScale(-1, 1)
-    else if (dx > 0) this.playerText.setScale(1, 1)
+    // Hacia dónde mira. Se recuerda: al soltar la tecla no se vuelve
+    // a mirar a la derecha de golpe.
+    if (dx < 0) this.sentidoX = -1
+    else if (dx > 0) this.sentidoX = 1
+    if (!this.sentidoX) this.sentidoX = 1
+
+    // El paso, cuando el aspecto no trae tira de dibujos. Ver
+    // criptomundo-mundo2d-andar.js: no dibuja piernas, mueve el cuerpo.
+    if (!this.playerSprite && typeof pasoAndar === 'function') {
+      if (!this.pasoJugador) this.pasoJugador = pasoAndarNuevo()
+      const recorrido = Math.hypot(this.px - antesX, this.py - antesY)
+      const paso = pasoAndar(this.pasoJugador, this.andando, recorrido, delta)
+      this.playerText.setPosition(this.px, this.py - paso.subida)
+      pasoAndarPintar(this.playerText, this.playerShadow, this.sentidoX, paso)
+      this.desvioCamara = paso.subida
+    } else {
+      this.playerText.setPosition(this.px, this.py)
+      this.playerText.setScale(this.sentidoX, 1)
+      this.playerShadow.setScale(1, 1)
+      this.desvioCamara = 0
+    }
+
+    // La cámara sigue al personaje: sin esto, el bote del cuerpo se lo
+    // comería el encuadre y el mapa entero temblaría. El desvío le
+    // descuenta exactamente lo que sube el cuerpo.
+    //
+    // Se pone SIEMPRE, también cuando no hay bote. El aspecto se carga
+    // por la red: si la tira de dibujos llega tarde —que es lo normal—
+    // el respaldo ya ha estado corriendo un rato, y sin esta línea el
+    // encuadre se quedaba desviado hasta 3 px para siempre.
+    try { this.cameras.main.setFollowOffset(0, -this.desvioCamara) } catch (e) {}
 
     // Sprite animado de la skin, si la hay
     if (this.playerSprite) try {
@@ -4935,14 +5090,25 @@ function mundoPintarVecinos(lista) {
           fontSize: '12px', resolution: 2,
         }).setOrigin(0.5).setDepth(7),
         x: x, y: y, destinoX: x, destinoY: y,
+        // El paso de los demás. El servidor ya manda 'anim' con cada
+        // vecino —walk o idle— desde que existe el mundo compartido, y
+        // esta pantalla no lo leía: los otros jugadores se deslizaban
+        // igual que te deslizabas tú.
+        paso: typeof pasoAndarNuevo === 'function' ? pasoAndarNuevo() : null,
+        anim: v.anim || 'idle', sentido: 1,
       }
       OTROS[v.usuario] = o
       addLog('👋 ' + v.nombre + ' anda por aquí.', 'system')
     }
     // No se le planta en el sitio: se le apunta a dónde va y el bucle
     // lo lleva. Si no, los demás avanzan a diez tirones por segundo.
+    // Hacia dónde va y hacia dónde mira: lo uno para llevarle suave y
+    // lo otro para voltearle. Los dos los decide el servidor.
+    if (x < o.destinoX - 0.5) o.sentido = -1
+    else if (x > o.destinoX + 0.5) o.sentido = 1
     o.destinoX = x
     o.destinoY = y
+    o.anim = v.anim || 'idle'
     o.etiqueta.setText(v.nombre + ' Nv.' + v.nivel)
     o.arma.setText((v.arma && v.arma.icono) || '')
     o.cuerpo.setText((v.aspecto && v.aspecto.emoji) || '🧝')
@@ -4974,12 +5140,29 @@ function mundoInterpolar(escena) {
   var k = Math.min(1, (escena.game.loop.delta / 1000) * 12)
   Object.keys(OTROS).forEach(function (u) {
     var o = OTROS[u]
+    var antesX = o.x, antesY = o.y
     o.x += (o.destinoX - o.x) * k
     o.y += (o.destinoY - o.y) * k
-    o.cuerpo.setPosition(o.x, o.y)
+
+    // El paso. Quien manda es el 'anim' del servidor; el recorrido de
+    // este fotograma solo marca la cadencia. Sin la primera condición,
+    // la interpolación —que se acerca al destino sin llegar nunca—
+    // dejaría a los demás temblando de pie para siempre.
+    var subida = 0
+    if (o.paso && typeof pasoAndar === 'function') {
+      var rec = Math.hypot(o.x - antesX, o.y - antesY)
+      var p = pasoAndar(o.paso, o.anim === 'walk', rec, escena.game.loop.delta)
+      subida = p.subida
+      pasoAndarPintar(o.cuerpo, o.sombra, o.sentido, p)
+    }
+
+    o.cuerpo.setPosition(o.x, o.y - subida)
     o.sombra.setPosition(o.x, o.y + 14)
+    // La etiqueta NO bota: un nombre temblando encima de la cabeza se
+    // lee peor y marea. Se queda quieta sobre el sitio, no sobre el
+    // cuerpo.
     o.etiqueta.setPosition(o.x, o.y - 22)
-    o.arma.setPosition(o.x + 14, o.y + 2)
+    o.arma.setPosition(o.x + 14 * o.sentido, o.y + 2 - subida)
   })
 }
 

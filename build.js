@@ -32,6 +32,7 @@ const PAGE_ORDER = [
   'index',
   'index-2',
   'criptomundo-mundo2d',
+  'criptomundo-mundo2d-andar',
   'criptomundo-mundo2d-2',
   'criptomundo-mundo2d-3',
   'criptomundo-mundo2d-4',

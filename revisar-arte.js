@@ -118,11 +118,15 @@ function revisar() {
     }
     if (!s.walk) {
       faltan.push({
-        prioridad: 1,
+        // Prioridad 2 desde el STEP 22. Antes era 1 y era lo más
+        // visible del juego: el personaje se deslizaba. Ahora hay un
+        // respaldo que mueve el cuerpo, así que falta el dibujo pero
+        // ya no falta el movimiento.
+        prioridad: 2,
         qué: `skin ${s.id} · animación de caminar`,
         archivo: `assets/skins/${s.id}_walk.png`,
         medidas: 'una fila de cuadros del mismo tamaño; se declara en 20-skins.js con frames, ancho y alto',
-        hoy: 'el personaje se desliza sin mover las piernas',
+        hoy: 'se mueve el cuerpo al andar (bote, balanceo y sombra) pero sin piernas dibujadas',
       })
     } else {
       const m = medirPng(path.join(ASSETS, 'skins', s.walk.file))

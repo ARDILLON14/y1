@@ -4,6 +4,47 @@ Cada versión con lo que la motivó. Los detalles completos están en `docs/CAMB
 
 ## v32 (en curso) — El mundo deja de pelear consigo mismo
 
+### Seis de los siete aspectos se deslizaban por el mapa
+
+`npm run arte` dice que faltan 77 dibujos y que los seis que más se notan
+son las animaciones de caminar. Solo la Zarigüeya Laureada tiene tira de
+fotogramas; los otros seis aspectos son un emoji al que, al moverse, se le
+cambia la posición y se le voltea a izquierda o derecha. Nada más. El
+personaje se desplazaba como una pieza de ajedrez.
+
+La causa no es que falte arte. Es que la animación se escribió como «si
+hay tira, reprodúcela», y el camino de al lado —el que se recorre casi
+siempre— no tiene respaldo: no hay nada.
+
+Y había un dato desperdiciado. Desde que existe el mundo compartido, el
+cliente manda `anim` (walk o idle) con cada pulso y el servidor lo devuelve
+con cada vecino. La pantalla nunca lo leyó, así que los demás jugadores se
+deslizaban igual.
+
+Ahora hay un respaldo procedural: no dibuja piernas, pero mueve el cuerpo
+como se mueve al andar —sube y baja con cada apoyo, se ladea hacia la
+pierna que pisa, se achata al plantar el pie y la sombra se estrecha
+cuando el cuerpo está arriba—. Se aplica a tu personaje y a todos los
+vecinos, y **se apaga solo** en cuanto un aspecto traiga su tira de verdad.
+
+Tres detalles que costaron más que el efecto:
+
+- La cadencia la marca la **distancia recorrida**, no el reloj. Con un
+  temporizador, andar despacio con el mando táctil se vería como patalear
+  en el sitio.
+- La cámara sigue al personaje, así que el bote del cuerpo se lo comía el
+  encuadre y **temblaba el mapa entero**. El desvío de la cámara descuenta
+  exactamente lo que sube el cuerpo, y se pone a cero también cuando hay
+  tira: el aspecto se carga por la red y llega tarde, así que el respaldo
+  corre un rato antes; sin eso el encuadre se quedaba torcido para siempre.
+- La constante de apagado era exponencial y no terminaba nunca: medido, el
+  cuerpo seguía botando **1.072 ms** después de soltar la tecla, seis veces
+  lo que decía la constante. Ahora sube y baja a ritmo constante y se posa
+  en los 180 ms que anuncia.
+
+Nada de esto toca el servidor ni decide nada del juego: ni posición, ni
+colisión, ni velocidad. Solo elige cómo se pinta lo que ya se decidió.
+
 ### La dificultad no estaba en los números: estaba en dos mecánicas que nadie te contaba
 
 El proyecto trae sus propias herramientas de diagnóstico y no había

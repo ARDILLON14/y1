@@ -116,14 +116,25 @@ function mundoPintarVecinos(lista) {
           fontSize: '12px', resolution: 2,
         }).setOrigin(0.5).setDepth(7),
         x: x, y: y, destinoX: x, destinoY: y,
+        // El paso de los demás. El servidor ya manda 'anim' con cada
+        // vecino —walk o idle— desde que existe el mundo compartido, y
+        // esta pantalla no lo leía: los otros jugadores se deslizaban
+        // igual que te deslizabas tú.
+        paso: typeof pasoAndarNuevo === 'function' ? pasoAndarNuevo() : null,
+        anim: v.anim || 'idle', sentido: 1,
       }
       OTROS[v.usuario] = o
       addLog('👋 ' + v.nombre + ' anda por aquí.', 'system')
     }
     // No se le planta en el sitio: se le apunta a dónde va y el bucle
     // lo lleva. Si no, los demás avanzan a diez tirones por segundo.
+    // Hacia dónde va y hacia dónde mira: lo uno para llevarle suave y
+    // lo otro para voltearle. Los dos los decide el servidor.
+    if (x < o.destinoX - 0.5) o.sentido = -1
+    else if (x > o.destinoX + 0.5) o.sentido = 1
     o.destinoX = x
     o.destinoY = y
+    o.anim = v.anim || 'idle'
     o.etiqueta.setText(v.nombre + ' Nv.' + v.nivel)
     o.arma.setText((v.arma && v.arma.icono) || '')
     o.cuerpo.setText((v.aspecto && v.aspecto.emoji) || '🧝')
@@ -155,12 +166,29 @@ function mundoInterpolar(escena) {
   var k = Math.min(1, (escena.game.loop.delta / 1000) * 12)
   Object.keys(OTROS).forEach(function (u) {
     var o = OTROS[u]
+    var antesX = o.x, antesY = o.y
     o.x += (o.destinoX - o.x) * k
     o.y += (o.destinoY - o.y) * k
-    o.cuerpo.setPosition(o.x, o.y)
+
+    // El paso. Quien manda es el 'anim' del servidor; el recorrido de
+    // este fotograma solo marca la cadencia. Sin la primera condición,
+    // la interpolación —que se acerca al destino sin llegar nunca—
+    // dejaría a los demás temblando de pie para siempre.
+    var subida = 0
+    if (o.paso && typeof pasoAndar === 'function') {
+      var rec = Math.hypot(o.x - antesX, o.y - antesY)
+      var p = pasoAndar(o.paso, o.anim === 'walk', rec, escena.game.loop.delta)
+      subida = p.subida
+      pasoAndarPintar(o.cuerpo, o.sombra, o.sentido, p)
+    }
+
+    o.cuerpo.setPosition(o.x, o.y - subida)
     o.sombra.setPosition(o.x, o.y + 14)
+    // La etiqueta NO bota: un nombre temblando encima de la cabeza se
+    // lee peor y marea. Se queda quieta sobre el sitio, no sobre el
+    // cuerpo.
     o.etiqueta.setPosition(o.x, o.y - 22)
-    o.arma.setPosition(o.x + 14, o.y + 2)
+    o.arma.setPosition(o.x + 14 * o.sentido, o.y + 2 - subida)
   })
 }
 

@@ -635,15 +635,43 @@ class WorldScene extends Phaser.Scene {
     // Colisión con los edificios: se prueba cada eje por separado para
     // poder deslizarse a lo largo de una pared en vez de quedarse
     // clavado al tocarla en diagonal.
+    const antesX = this.px, antesY = this.py
     if (!this.chocaCon(nx, this.py)) this.px = nx
     if (!this.chocaCon(this.px, ny)) this.py = ny
 
-    this.playerText.setPosition(this.px, this.py)
     this.playerShadow.setPosition(this.px, this.py + 16)
 
-    // Walking animation (flip)
-    if (dx < 0) this.playerText.setScale(-1, 1)
-    else if (dx > 0) this.playerText.setScale(1, 1)
+    // Hacia dónde mira. Se recuerda: al soltar la tecla no se vuelve
+    // a mirar a la derecha de golpe.
+    if (dx < 0) this.sentidoX = -1
+    else if (dx > 0) this.sentidoX = 1
+    if (!this.sentidoX) this.sentidoX = 1
+
+    // El paso, cuando el aspecto no trae tira de dibujos. Ver
+    // criptomundo-mundo2d-andar.js: no dibuja piernas, mueve el cuerpo.
+    if (!this.playerSprite && typeof pasoAndar === 'function') {
+      if (!this.pasoJugador) this.pasoJugador = pasoAndarNuevo()
+      const recorrido = Math.hypot(this.px - antesX, this.py - antesY)
+      const paso = pasoAndar(this.pasoJugador, this.andando, recorrido, delta)
+      this.playerText.setPosition(this.px, this.py - paso.subida)
+      pasoAndarPintar(this.playerText, this.playerShadow, this.sentidoX, paso)
+      this.desvioCamara = paso.subida
+    } else {
+      this.playerText.setPosition(this.px, this.py)
+      this.playerText.setScale(this.sentidoX, 1)
+      this.playerShadow.setScale(1, 1)
+      this.desvioCamara = 0
+    }
+
+    // La cámara sigue al personaje: sin esto, el bote del cuerpo se lo
+    // comería el encuadre y el mapa entero temblaría. El desvío le
+    // descuenta exactamente lo que sube el cuerpo.
+    //
+    // Se pone SIEMPRE, también cuando no hay bote. El aspecto se carga
+    // por la red: si la tira de dibujos llega tarde —que es lo normal—
+    // el respaldo ya ha estado corriendo un rato, y sin esta línea el
+    // encuadre se quedaba desviado hasta 3 px para siempre.
+    try { this.cameras.main.setFollowOffset(0, -this.desvioCamara) } catch (e) {}
 
     // Sprite animado de la skin, si la hay
     if (this.playerSprite) try {
