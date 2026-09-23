@@ -55,6 +55,7 @@ const PRUEBAS = [
   ['test-muerte-progreso', 3886], ['test-sprites-armas', 3887],
   ['test-paginas', 3888], ['test-autoridad-servidor', 3889],
   ['test-partida-completa', 3890], ['test-descanso', 3891],
+  ['test-primera-mision', 3892],
 ]
 
 // Estas miden TIEMPO: duraciones de animación, ventanas de golpe,

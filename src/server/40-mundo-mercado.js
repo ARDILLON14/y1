@@ -3,6 +3,30 @@
 //  MISIONES (catálogo servidor)
 // ═══════════════════════════════════════════════════════════════════
 const QUESTS = [
+  // La primera misión del juego, y la que faltaba.
+  //
+  // Salió midiendo: la araña es el primer enemigo de TODOS —es lo que se
+  // encuentra un personaje nuevo nada más salir al bosque— y no tenía
+  // ninguna misión detrás. Se matan seis para llegar a nivel 3 y no
+  // contaban para nada. La primera misión que veía un jugador nuevo era
+  // matar ocho trolls, que a ese nivel lo revientan.
+  //
+  // Cinco arañas no es un número redondo elegido al azar: llegar a nivel
+  // 3 cuesta seis, así que esta misión se completa justo antes de subir,
+  // y el jugador cobra a la vez que sube. Es el momento en que conviene
+  // que pase algo bueno.
+  //
+  // La recompensa lleva pociones a propósito. La medición del arranque
+  // decía que un nivel 1 se queda sin forma de curarse tras 3,8 arañas:
+  // lo que le falta al jugador en ese punto exacto es justo esto, así
+  // que la primera misión le enseña para qué sirven.
+  {
+    id: 'q_aranas', npcId: 'npc_draven', npcName: 'Capitán Draven',
+    name: 'Las Arañas del Sendero', type: 'HUNT', icon: '🕷️', levelReq: 1,
+    description: 'Las arañas han tomado el sendero del bosque y nadie puede pasar. Despeja el camino.',
+    objectives: [{ id: 'o0', text: 'Eliminar Arañas Venenosas', key: 'kill_spider', required: 5 }],
+    rewards: [{ gold: 120, xp: 120, cgrid: 0, itemId: 'potion_hp', itemQty: 3 }],
+  },
   {
     id: 'q_trolls', npcId: 'npc_aldric', npcName: 'Aldric el Herrero',
     name: 'Purga de los Trolls', type: 'HUNT', icon: '🧟', levelReq: 1,

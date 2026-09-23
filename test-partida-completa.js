@@ -171,11 +171,20 @@ async function run() {
   const activas = (await yo.get('/api/quests?status=active')).body.quests || []
   check('y queda activa', activas.some(q => q.questId === mision.id), JSON.stringify(activas).slice(0, 100))
   // Pelear cuenta para la misión: eso es la costura.
-  // Con pociones: el bicho de la misión puede ser un troll y la prueba
-  // mide si la misión avanza, no si un nivel 3 sobrevive a un troll.
+  // Aquí hay una cosa del sistema que conviene saber: al aceptar una
+  // misión, el progreso se siembra con lo que YA habías hecho. Si vienes
+  // de subir a nivel 3 matando arañas, la misión de las arañas nace
+  // completa. Eso está bien —premia lo que ya hiciste— pero significa que
+  // "pelear la hace avanzar" no siempre se puede observar.
+  //
+  // Así que se comprueba lo que de verdad cierra la costura entre los dos
+  // sistemas: que la misión se pueda ENTREGAR y que pague. Si además
+  // quedaba trabajo por hacer, se hace.
   await yo.post('/api/dev/dar', { itemId: 'potion_hp_v', quantity: 20 })
-  let progresó = false
-  for (let i = 0; i < 60 && !progresó; i++) {
+  const pendiente = (activas.find(q => q.questId === mision.id) || {}).objectiveProgress || []
+  const faltaba = pendiente.some(o => o.current < (objetivo ? objetivo.required : 1))
+  let progresó = !faltaba
+  for (let i = 0; i < 60 && faltaba && !progresó; i++) {
     const salud = await yo.ficha()
     if (salud.hp < salud.maxHp * 0.4) { await yo.post('/api/player/use', { itemId: 'potion_hp_v' }); await dormir(200) }
     const r = await yo.post('/api/combat/action', { monsterId: bichoDeLaMision, action: 'attack' })
@@ -185,7 +194,14 @@ async function run() {
     }
     await dormir(370)
   }
-  check('pelear hace avanzar la misión', progresó, 'sin avance en 60 turnos contra ' + bichoDeLaMision)
+  check('la misión avanza peleando, o ya venía hecha de antes', progresó,
+    faltaba ? 'faltaba trabajo y no avanzó en 60 turnos' : 'venía hecha')
+
+  const oroAntesMision = (await yo.ficha()).gold
+  const entrega = await yo.post('/api/quests', { questId: mision.id, action: 'turnin' })
+  check('la misión se entrega y se cobra', entrega.status === 200, entrega.status + ' ' + entrega.raw.slice(0, 100))
+  check('y el oro sube al cobrarla', (await yo.ficha()).gold > oroAntesMision,
+    `${oroAntesMision} → ${(await yo.ficha()).gold}`)
 
   console.log('\n── 6. LA ARENA PAGA EN EL SERVIDOR ──')
   // Se entra CURADO, como entraría cualquiera. La primera versión venía

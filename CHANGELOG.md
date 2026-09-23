@@ -4,6 +4,36 @@ Cada versión con lo que la motivó. Los detalles completos están en `docs/CAMB
 
 ## v32 (en curso) — El mundo deja de pelear consigo mismo
 
+### La araña no tenía misión, y es el primer enemigo de todos
+
+Salió al jugar una partida entera de principio a fin. La araña es lo que
+se encuentra un personaje nuevo nada más salir al bosque: se matan seis
+para llegar a nivel 3, y ninguna contaba para nada. La primera misión que
+veía un recién llegado era matar ocho trolls, que a ese nivel lo
+revientan.
+
+Ahora la primera misión de la lista es matar cinco arañas. Cinco no es un
+número redondo al azar: llegar a nivel 3 cuesta seis, así que la misión
+se completa justo antes de subir y el jugador cobra a la vez que sube,
+que es el momento en el que conviene que pase algo bueno.
+
+La recompensa lleva tres pociones a propósito. La medición del arranque
+decía que a un nivel 1 se le acaba la forma de curarse tras 3,8 arañas:
+lo que le falta en ese punto exacto es justo eso, así que la primera
+misión le enseña para qué sirven. Más 120 de oro y 120 de experiencia,
+proporcionado a las otras misiones de nivel 1 del catálogo.
+
+Las cinco misiones que ya había siguen intactas, y la araña conserva sus
+mismos números.
+
+**Y de paso salió una cosa del sistema que conviene saber.** Al aceptar
+una misión, el progreso se siembra con lo que YA habías hecho. Si vienes
+de subir a nivel 3 matando arañas, la misión de las arañas nace
+completa. Está bien que sea así —premia lo que ya hiciste— pero significa
+que "pelear la hace avanzar" no siempre se puede observar, y la prueba de
+la partida completa daba en rojo por eso. Ahora comprueba lo que de
+verdad cierra la costura: que la misión se pueda entregar y que pague.
+
 ### El juego premiaba dejarse matar
 
 Me pediste que decidiera yo la dificultad del arranque. Antes de tocar
