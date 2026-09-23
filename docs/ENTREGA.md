@@ -8,8 +8,8 @@ La foto de partida está en `docs/AUDITORIA_V31.md` y no se reescribe: sirve
 para comparar. El relato largo de cada cambio, con el porqué, está en
 `CHANGELOG.md`.
 
-**Estado al cerrar:** 52 archivos de prueba · 1.319 comprobaciones · 0 fallos
-· ~196 s con `npm test`.
+**Estado al cerrar:** 53 archivos de prueba · 1.349 comprobaciones · 0 fallos
+· ~193 s con `npm test`.
 
 ---
 
@@ -387,7 +387,9 @@ que más se nota. Y la comprobación inversa: si un dibujo no mide lo que
 declara su ficha, lo canta.
 **MEDICIÓN** · 10 archivos puestos, 77 por hacer, 0 rotos.
 **SE COMPROBÓ QUE DETECTA** · se le metieron los dos casos rotos a
-propósito y los dos salieron con su nombre y su motivo.
+propósito y los dos salieron con su nombre y su motivo. *(Corregido en el
+STEP 23: los dos casos eran de skin, y el camino de los objetos estaba
+roto y sin probar.)*
 **LECCIÓN** · al cambiar el ritmo del sondeo se rompió una comprobación
 que decía «el daño llega como mucho tres pasos después del gesto». Los
 pasos dependen de cada cuánto pregunte la prueba, no del juego. Ahora está
@@ -534,6 +536,89 @@ prefiere lo contrario, la condición está en una sola línea.
 
 **PRUEBAS QUE PASAN** · 52 archivos · 1.319 comprobaciones · 0 fallos.
 **SIGUIENTE** · nada pendiente por mi parte. Ver abajo.
+
+---
+
+## STEP 23 — Repaso literal de las 24 fases, y lo que apareció
+
+**POR QUÉ** · se preguntó si estaba todo. En vez de contestar de memoria
+se releyó el encargo original fase por fase y se comprobó cada punto
+contra el código. Aparecieron tres cosas.
+
+**ARCHIVOS TOCADOS** · `src/server/40-mundo-mercado.js`,
+`src/server/60-http.js`, `revisar-arte.js`, `test-tiempo-sin-mirar.js`
+(nuevo), `run-tests.js`, `README.md`, `CHANGELOG.md`.
+
+### 1. Un fallo de verdad: el mercado se quedaba el objeto al caducar
+
+**COMPORTAMIENTO ACTUAL** · al publicar, el objeto SALE del inventario
+(escrow). Cancelar lo devuelve; vender se lo entrega al comprador.
+
+**PROBLEMA** · caducar no hacía ninguna de las tres cosas. El objeto se
+quedaba dentro de la publicación **para siempre** y el vendedor lo perdía
+sin que nadie se lo dijera. Y había un segundo lado: el estado solo
+pasaba a `EXPIRED` dentro de `buyListing`, o sea **solo si alguien
+intentaba comprar**. Una publicación caducada a la que nadie picara
+seguía anunciándose en la tienda como comprable, porque la tienda filtra
+por `status === 'ACTIVE'`.
+
+**CAUSA RAÍZ** · la caducidad se escribió como una comprobación dentro de
+la compra, no como un estado del mercado. Nadie barría nada.
+
+**ARREGLO** · `caducarListing` / `devolverEscrow` / `barrerMercado`. El
+barrido corre una vez por minuto y además al entrar en la tienda, así que
+nadie tiene que pasar por allí para que a un vendedor le vuelva lo suyo.
+Devolver puede fallar (inventario lleno, vendedor no cargado): en ese
+caso se deja pendiente y se reintenta, en vez de tirar el objeto, que era
+el fallo que se estaba arreglando. Las publicaciones de arranque
+(`npc: true`) nunca salieron del inventario de nadie y no se les inventa
+nada.
+
+**COMPATIBILIDAD** · una partida guardada de antes trae caducadas a las
+que nunca se les devolvió nada. El primer barrido se las devuelve, porque
+`escrowDevuelto` sin poner cuenta como «sin devolver».
+
+### 2. Cuatro flujos de la FASE 21 que no tenían prueba
+
+`market · expiration`, `farming · offline growth`, `farming · duplicate
+harvest` y `farming · invalid seed`. Los tres últimos **ya funcionaban**;
+simplemente nadie lo había comprobado nunca. El primero no funcionaba.
+
+**PRUEBAS AÑADIDAS** · `test-tiempo-sin-mirar.js` (30). Los cuatro
+comparten la misma dificultad —no se ven sin dejar pasar el tiempo— así
+que el tiempo se deja pasar de la única manera honesta que cabe en una
+prueba: se para el servidor, se envejecen los datos en disco y se vuelve
+a arrancar. Contra el código anterior fallan **5** comprobaciones, todas
+de caducidad; las del huerto pasan, que es justo lo que dice el párrafo
+de arriba.
+
+### 3. La FASE 14 pedía dos cosas que no se comprobaban
+
+**Transparencia.** La fase la nombra y `revisar-arte.js` no la miraba. Un
+PNG sin canal alfa se pinta con su fondo: sobre el mundo, un rectángulo
+de color alrededor del dibujo. Ahora se lee el tipo de color del PNG y se
+canta.
+
+**Anclaje.** La fase dice, con estas palabras, «nunca asumir que todos
+los sprites tienen el mismo anchor». El mecanismo existe —cada arma puede
+declarar su `empunadura` y su `spriteAngulo`, y el dibujante los usa— pero
+**ninguna arma los declara**: las tres caen al mismo valor por defecto,
+que es exactamente la suposición que la fase prohíbe. Con tres espadas
+parecidas se aguanta; con un arco o un martillo se nota en la mano.
+`npm run arte` ahora lo nombra arma por arma. No he inventado valores: no
+se pueden elegir sin mirar cada dibujo.
+
+**Y UN FALLO MÍO DEL STEP 20** · el lector del catálogo de objetos iba
+línea a línea, y las tres espadas con dibujo propio son justo las fichas
+partidas en dos líneas. Resultado: `revisar-arte` se saltaba exactamente
+las fichas que tenían arte. Decía «10 archivos puestos» y los diez eran
+de skins; **ni un solo PNG de objeto se había comprobado nunca**, y la
+comprobación de detección del STEP 20 pasó porque los dos casos rotos que
+le metí eran de skin. Ahora cuenta llaves en vez de líneas: 13 puestos, y
+los dos casos rotos inyectados sobre un objeto salen con su nombre.
+
+**PRUEBAS QUE PASAN** · 53 archivos · 1.349 comprobaciones · 0 fallos.
+**SIGUIENTE** · ver abajo.
 
 ---
 

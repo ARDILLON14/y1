@@ -317,6 +317,64 @@ function seedMarket() {
   }
 }
 
+// ── Caducidad: el escrow tiene que volver ──────────────────────────
+//
+// Al publicar, el objeto SALE del inventario (línea del removeItem, más
+// abajo). Cancelar lo devuelve; vender se lo entrega al comprador.
+// Caducar no hacía ninguna de las tres cosas: el objeto se quedaba
+// dentro de la publicación para siempre y el vendedor lo perdía sin que
+// nadie se lo dijera.
+//
+// Y había un segundo lado. El estado solo pasaba a EXPIRED dentro de
+// buyListing, o sea SOLO si alguien intentaba comprarla. Una publicación
+// caducada a la que nadie picara seguía saliendo en la tienda como
+// comprable, porque la tienda filtra por status === 'ACTIVE'. Se veía
+// como una oferta buena, se pulsaba, y contestaba que estaba caducada.
+//
+// Las publicaciones de arranque (npc: true) nunca salieron del
+// inventario de nadie, así que no hay nada que devolverles.
+function caducarListing(l) {
+  if (!l || l.status !== 'ACTIVE') return false
+  if (new Date(l.expiresAt).getTime() >= now()) return false
+  l.status = 'EXPIRED'
+  l.escrowDevuelto = !!l.npc
+  devolverEscrow(l)
+  audit('market_expire', (l.seller && l.seller.name) || '?',
+        { listingId: l.id, itemId: l.itemId, qty: l.quantity, devuelto: !!l.escrowDevuelto })
+  return true
+}
+
+// Se separa del paso anterior porque PUEDE FALLAR: si al vendedor no le
+// cabe en el inventario, o no está cargado, se deja pendiente y se
+// reintenta en el siguiente barrido. Tirar el objeto sería el mismo
+// fallo que se está arreglando.
+//
+// El escrowDevuelto sin poner cuenta como "sin devolver": las partidas
+// guardadas antes de esto traen caducadas a las que nunca se les
+// devolvió nada, y el primer barrido se las devuelve.
+function devolverEscrow(l) {
+  if (!l || l.escrowDevuelto) return false
+  const p = Object.values(store.players).find(x => x.character.id === l.sellerId)
+  if (!p) return false
+  if (!addItem(p.character, l.itemId, l.quantity, 'mercado')) return false
+  l.escrowDevuelto = true
+  return true
+}
+
+function barrerMercado() {
+  let tocado = false
+  for (const l of store.marketListings) {
+    if (caducarListing(l)) tocado = true
+    else if (l.status === 'EXPIRED' && !l.escrowDevuelto && devolverEscrow(l)) tocado = true
+  }
+  if (tocado) persist()
+  return tocado
+}
+
+// Una vez por minuto. Nadie tiene que entrar en la tienda para que a un
+// vendedor le vuelva lo suyo.
+setInterval(barrerMercado, 60_000).unref?.()
+
 function createListing(char, itemId, quantity, pricePerUnit) {
   const t = template(itemId)
   if (!t) return { error: 'Objeto desconocido', code: 400 }
@@ -346,7 +404,7 @@ function buyListing(char, listingId, quantity) {
   const listing = store.marketListings.find(l => l.id === listingId)
   if (!listing) return { error: 'Publicación no encontrada', code: 404 }
   if (listing.status !== 'ACTIVE') return { error: 'Publicación no disponible', code: 409 }
-  if (new Date(listing.expiresAt).getTime() < now()) { listing.status = 'EXPIRED'; return { error: 'Publicación expirada', code: 409 } }
+  if (caducarListing(listing)) return { error: 'Publicación expirada', code: 409 }
   if (listing.sellerId === char.id) return { error: 'No puedes comprar tu propia publicación', code: 400 }
   const qty = intIn(quantity, 1, listing.quantity)
   if (!qty) return { error: 'Cantidad inválida', code: 400 }

@@ -773,6 +773,9 @@ async function handleAPI(req, res, pathname, query) {
 
   // ══════════ MERCADO ══════════
   if (pathname === '/api/market' && req.method === 'GET') {
+    // Antes de enseñar la tienda, retirar lo caducado. Si no, se ofrece
+    // como comprable algo que al pulsarlo contesta que ya no vale.
+    barrerMercado()
     const listings = store.marketListings.filter(l => l.status === 'ACTIVE')
     return json(res, { listings, total: listings.length, page: 1, pages: 1 })
   }

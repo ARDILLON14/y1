@@ -28,11 +28,21 @@ const SRC = path.join(RAIZ, 'src', 'server')
 
 // ── Leer un PNG sin librerías ──────────────────────────────────────
 // Solo hacen falta el ancho y el alto, y están en los primeros 24 bytes.
+// El tipo de color va en el byte 25 del IHDR:
+//   0 gris · 2 RGB · 3 paleta · 4 gris+alfa · 6 RGBA
+// Los tipos 4 y 6 traen canal alfa. El 3 (paleta) solo es transparente
+// si además lleva un bloque tRNS, así que hay que buscarlo.
+const TIPOS_PNG = { 0: 'gris', 2: 'RGB', 3: 'paleta', 4: 'gris+alfa', 6: 'RGBA' }
 function medirPng(ruta) {
   try {
     const buf = fs.readFileSync(ruta)
-    if (buf.length < 24 || buf.readUInt32BE(0) !== 0x89504e47) return null
-    return { ancho: buf.readUInt32BE(16), alto: buf.readUInt32BE(20), bytes: buf.length }
+    if (buf.length < 26 || buf.readUInt32BE(0) !== 0x89504e47) return null
+    const tipo = buf[25]
+    const alfa = tipo === 4 || tipo === 6 || (tipo === 3 && buf.includes(Buffer.from('tRNS')))
+    return {
+      ancho: buf.readUInt32BE(16), alto: buf.readUInt32BE(20), bytes: buf.length,
+      tipo, tipoNombre: TIPOS_PNG[tipo] || '?', alfa,
+    }
   } catch { return null }
 }
 
@@ -41,18 +51,39 @@ function fuente(archivo) {
 }
 
 // ── Qué declara el juego ───────────────────────────────────────────
-function catalogoObjetos() {
-  const s = fuente('30-personajes-combate.js')
+// Cada ficha del catálogo empieza por `  id: { name: '…'`, pero NO
+// cabe siempre en una línea: las tres espadas con dibujo propio están
+// partidas en dos, y justo esas son las que traen `imagen`.
+//
+// La primera versión de esto leía línea a línea, así que se saltaba
+// exactamente las fichas que tenían arte: el contador decía «10
+// archivos puestos» y los diez eran de skins. Ni un solo PNG de objeto
+// se había comprobado nunca. Ahora se cuentan las llaves.
+function fichasDe(texto) {
   const out = []
-  // Cada línea del catálogo empieza por `  id: { name: '…'` y puede
-  // traer `imagen: '/assets/…'`. Se lee de ahí y no de una lista
-  // paralela: una lista paralela se queda vieja y nadie se entera.
-  for (const m of s.matchAll(/^\s{2}([a-z_0-9]+):\s*\{\s*name: '([^']+)'[^\n]*?(?:icon: '([^']*)')?[^\n]*$/gm)) {
-    const [linea, id, nombre] = m
-    if (!/type: '(WEAPON|ARMOR|POTION|FOOD|MATERIAL|SEED|ACCESSORY)'/.test(linea) && !/rarity:/.test(linea)) continue
-    const img = /imagen: '([^']+)'/.exec(linea)
-    const tipo = (/type: '([A-Z]+)'/.exec(linea) || [])[1] || '?'
-    out.push({ id, nombre, tipo, imagen: img ? img[1] : null })
+  const re = /^ {2}([a-z_0-9]+):\s*\{/gm
+  let m
+  while ((m = re.exec(texto))) {
+    let i = texto.indexOf('{', m.index), nivel = 0, fin = i
+    for (; fin < texto.length; fin++) {
+      if (texto[fin] === '{') nivel++
+      else if (texto[fin] === '}') { nivel--; if (nivel === 0) break }
+    }
+    out.push({ id: m[1], cuerpo: texto.slice(i, fin + 1) })
+    re.lastIndex = fin
+  }
+  return out
+}
+
+function catalogoObjetos() {
+  const out = []
+  for (const f of fichasDe(fuente('30-personajes-combate.js'))) {
+    const nombre = (/name: '([^']+)'/.exec(f.cuerpo) || [])[1]
+    if (!nombre) continue
+    const tipo = (/type: '([A-Z]+)'/.exec(f.cuerpo) || [])[1]
+    if (!tipo || !/rarity:/.test(f.cuerpo)) continue
+    const img = /imagen: '([^']+)'/.exec(f.cuerpo)
+    out.push({ id: f.id, nombre, tipo, imagen: img ? img[1] : null })
   }
   return out
 }
@@ -82,6 +113,27 @@ function catalogoSkins() {
     skins.push({ id, file, portrait, avatar, walk: walk ? { file: walk[1], frames: +walk[2], ancho: +walk[3], alto: +walk[4] } : null })
   }
   return skins
+}
+
+// ── Anclaje de cada arma ───────────────────────────────────────────
+// La FASE 14 dice, con estas palabras, «nunca asumir que todos los
+// sprites tienen el mismo anchor». El mecanismo está: cada arma puede
+// declarar su empuñadura y el ángulo al que viene girada su hoja, y el
+// dibujante los usa. Lo que no está es que alguien los haya declarado:
+// si ninguna los trae, todas caen al mismo valor por defecto, que es
+// exactamente la suposición que la fase prohíbe. Esto lo cuenta.
+function revisarAnclajes() {
+  const out = []
+  for (const f of fichasDe(fuente('30-personajes-combate.js'))) {
+    const img = /imagen: '([^']+)'/.exec(f.cuerpo)
+    if (!img) continue
+    out.push({
+      id: f.id, imagen: img[1],
+      empunadura: /empunadura:/.test(f.cuerpo),
+      angulo: /spriteAngulo:/.test(f.cuerpo),
+    })
+  }
+  return out
 }
 
 // ── El informe ─────────────────────────────────────────────────────
@@ -160,8 +212,23 @@ function revisar() {
     } else hay.push({ qué: `arma ${a.id} · animación`, archivo: `assets/items/anim/${a.id}.png`, medidas: `${m.ancho}×${m.alto} · ${m.ancho / m.alto} cuadros` })
   }
 
+  // 4. Transparencia. La FASE 14 la pide y no se miraba: un PNG sin
+  // canal alfa se pinta con su fondo, y sobre el mundo eso es un
+  // rectángulo de color alrededor del dibujo. No revienta nada, así que
+  // nadie se entera hasta que se ve.
+  for (const x of hay) {
+    const abs = path.join(RAIZ, x.archivo)
+    const m = medirPng(abs)
+    if (m && !m.alfa) {
+      rotos.push({
+        qué: x.qué, archivo: x.archivo,
+        problema: `es ${m.tipoNombre} y no trae transparencia: se pintará con su fondo`,
+      })
+    }
+  }
+
   faltan.sort((a, b) => a.prioridad - b.prioridad || a.qué.localeCompare(b.qué))
-  return { faltan, rotos, hay }
+  return { faltan, rotos, hay, anclajes: revisarAnclajes() }
 }
 
 const r = revisar()
@@ -197,6 +264,20 @@ for (const p of [1, 2, 3]) {
     console.log(`     hoy:     ${x.hoy}`)
   }
   if (lote.length > 12) console.log(`   … y ${lote.length - 12} más (usa --json para la lista entera)`)
+}
+
+const sinAnclaje = (r.anclajes || []).filter(a => !a.empunadura)
+if (sinAnclaje.length) {
+  console.log(`\n── EL MISMO ANCLAJE PARA TODAS · ${sinAnclaje.length} de ${r.anclajes.length} armas con dibujo ──`)
+  console.log('   Cada arma PUEDE declarar su empuñadura y el ángulo de su hoja')
+  console.log('   en 30-personajes-combate.js, y el dibujante los usa. Ninguna de')
+  console.log('   estas los declara, así que todas se sujetan por el mismo punto.')
+  console.log('   Con tres espadas parecidas se aguanta; con un arco o un martillo')
+  console.log('   se nota en la mano.\n')
+  for (const a of sinAnclaje) {
+    console.log(`   · ${a.id}  ${a.imagen}`)
+    console.log(`     le falta: empunadura: { x, y }${a.angulo ? '' : ' y spriteAngulo'}`)
+  }
 }
 
 console.log('\n  Nada de esto rompe el juego: lo que no tiene dibujo cae a su')

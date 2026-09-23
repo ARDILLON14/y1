@@ -4,6 +4,58 @@ Cada versión con lo que la motivó. Los detalles completos están en `docs/CAMB
 
 ## v32 (en curso) — El mundo deja de pelear consigo mismo
 
+### El mercado se quedaba tu objeto cuando la publicación caducaba
+
+Repasando el encargo fase por fase apareció esto, que no es un detalle.
+
+Al publicar algo, el objeto sale de tu inventario y queda retenido en la
+publicación. Cancelarla te lo devuelve. Venderla se lo da al comprador.
+Y caducar... no hacía ninguna de las tres cosas: el objeto se quedaba
+dentro de la publicación para siempre y lo perdías sin que nadie te
+avisara. Dos días de plazo y se lo tragaba.
+
+Había un segundo lado. El estado solo pasaba a caducado **dentro de la
+compra**, o sea solo si alguien intentaba comprarla. Una publicación
+vencida a la que nadie picara seguía anunciándose en la tienda como
+comprable: se veía la oferta, se pulsaba, y contestaba que ya no valía.
+
+Ahora hay un barrido que corre una vez por minuto y también al entrar en
+la tienda. Devolver puede fallar —inventario lleno, vendedor sin cargar—
+y en ese caso se deja pendiente y se reintenta, en vez de tirar el objeto,
+que era justo el fallo que se estaba arreglando. Las publicaciones de
+arranque nunca salieron del inventario de nadie, así que no se les inventa
+nada. Y las partidas ya guardadas se reparan solas en el primer barrido.
+
+### Cuatro flujos que la FASE 21 pedía y nadie había comprobado
+
+Caducidad en el mercado, crecimiento del huerto con el servidor apagado,
+cosechar dos veces la misma parcela y sembrar una semilla que no existe.
+Los tres últimos ya funcionaban; simplemente nadie lo había mirado. El
+primero no funcionaba.
+
+Los cuatro comparten la misma dificultad: no se ven sin dejar pasar el
+tiempo. Así que se para el servidor, se envejecen los datos en disco y se
+vuelve a arrancar.
+
+### Y dos cosas de la FASE 14 que la herramienta de arte no miraba
+
+Una es la transparencia: un PNG sin canal alfa se pinta con su fondo, y
+sobre el mundo eso es un rectángulo de color alrededor del dibujo. Ahora
+se lee el tipo de color del PNG y se canta.
+
+La otra es el anclaje. La fase dice «nunca asumir que todos los sprites
+tienen el mismo anchor». El mecanismo está —cada arma puede declarar por
+dónde se sujeta y a qué ángulo viene su hoja— pero ninguna lo declara:
+las tres caen al mismo valor por defecto, que es exactamente la
+suposición prohibida. `npm run arte` ahora lo nombra arma por arma. No he
+inventado los valores: no se pueden elegir sin mirar cada dibujo.
+
+Por el camino apareció un fallo mío: el lector del catálogo de objetos iba
+línea a línea, y las tres espadas con dibujo propio son justo las fichas
+partidas en dos. La herramienta se saltaba exactamente las fichas que
+tenían arte. Decía «10 archivos puestos» y los diez eran de aspectos: ni
+un solo PNG de objeto se había comprobado nunca.
+
 ### Seis de los siete aspectos se deslizaban por el mapa
 
 `npm run arte` dice que faltan 77 dibujos y que los seis que más se notan
