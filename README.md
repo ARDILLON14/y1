@@ -24,6 +24,7 @@ Lo que **no** es: no hay token desplegado ni NFTs. `$CGRID` es un saldo interno 
 | `npm test` | 1.218 comprobaciones en 48 archivos, en paralelo (~170 s). Aparte por lentas: estabilidad y concurrencia |
 | `npm run test:serie` | Lo mismo de una en una (~450 s), para comparar cuando algo huele a carga |
 | `npm run doctor` | Diagnóstico priorizado de qué mejorar |
+| `npm run arte` | Qué dibujos faltan, con nombre y medidas, y cuáles están mal |
 | `npm run simular` | Cohorte de jugadores automatizados |
 | `npm run carga` | Prueba de carga (mide el techo del servidor) |
 | `npm run estabilidad` | Comprueba que nada crece sin techo (~90 s) |

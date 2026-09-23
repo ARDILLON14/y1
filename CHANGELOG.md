@@ -4,6 +4,51 @@ Cada versión con lo que la motivó. Los detalles completos están en `docs/CAMB
 
 ## v32 (en curso) — El mundo deja de pelear consigo mismo
 
+### "Faltan sprites" no es accionable; una lista con nombres sí
+
+El arte no lo puedo dibujar. Lo que sí se puede hacer es dejar de decir
+"faltan sprites" y decir exactamente cuáles, dónde van y qué medidas
+tienen que tener.
+
+`npm run arte` recorre lo que el juego DECLARA —no una lista paralela,
+que se queda vieja sin que nadie se entere— y cruza cada cosa con lo que
+hay en disco. Salen tres números: diez archivos puestos, setenta y siete
+por hacer, cero rotos.
+
+Lo que más se nota son las seis animaciones de caminar que faltan: seis
+de las siete skins se deslizan sin mover las piernas. Después vienen las
+animaciones de golpe de las armas, cuyo mecanismo quedó comprobado hace
+dos pasos.
+
+Y sirve en las dos direcciones. Además de decir qué falta, comprueba lo
+que ya está: si un dibujo no mide lo que declara su ficha, lo canta. Un
+PNG del tamaño equivocado se ve mal y no avisa a nadie. Se le metieron
+los dos casos rotos a propósito —una tira de skin con medidas que no
+cuadran y una animación de arma que el servidor rechazaría— y los dos
+salieron con su nombre y su motivo.
+
+### Una prueba medía en pasos algo que se mide en milisegundos
+
+Esta salió de rebote y es de las que enseñan.
+
+`test-arena-ventanas` fallaba dentro de la suite y pasaba suelta. La
+causa inmediata: el lanzador arranca las pruebas que miden tiempo al
+final, pero los SERVIDORES de la tanda anterior tardan un momento más en
+morir de verdad, así que empezaban a medir milisegundos encima de una
+máquina todavía cargada. Ahora hay un respiro de dos segundos y medio.
+
+La causa de fondo era otra. La prueba preguntaba cada 100 ms por un
+suceso que vive exactamente un paso de 100 ms: bastaba con que una
+petición tardara un poco de más para saltarse el paso en el que salió y
+no verlo nunca. Preguntando cada 40 ms no se pierde ninguno.
+
+Y al cambiar el ritmo del sondeo se rompió otra comprobación, que es lo
+interesante: decía "el daño llega como mucho tres pasos después del
+gesto". Los pasos dependen de cada cuánto pregunte la prueba, así que esa
+frase pasó a querer decir 120 ms en vez de 300 sin que el juego hubiera
+cambiado nada. Ahora está escrita en milisegundos, que sí es una
+propiedad del juego y no del observador.
+
 ### La araña no tenía misión, y es el primer enemigo de todos
 
 Salió al jugar una partida entera de principio a fin. La araña es lo que

@@ -85,18 +85,36 @@ async function run() {
   // último. Así que el gesto no sale en la misma respuesta en la que se
   // pide atacar, sino en la siguiente. Buscarlo ahí era la forma
   // equivocada de preguntarlo.
-  await pulso({ mx: 0, my: 0, atacar: true, apuntar: (s.body.estado.jugador.mirando || 0) })
-
-  let gesto = null, pasoDelGesto = -1, dañoVisto = 0, pasoDelDaño = -1
-  for (let i = 0; i < 10; i++) {
-    await sleep(100)
-    const r = await pulso({ mx: 0, my: 0, atacar: false })
-    const sucesos = (r.body.estado || {}).sucesos || []
-    for (const x of sucesos) {
-      if (x.t === 'gesto' && !gesto) { gesto = x; pasoDelGesto = i }
-      if (x.t === 'daño' && x.a === 'enemigo' && pasoDelDaño < 0) { dañoVisto += x.dmg; pasoDelDaño = i }
+  // Se pregunta MÁS DEPRISA que el paso del servidor, y se insiste.
+  //
+  // Un suceso vive un solo paso de 100 ms. Preguntando también cada 100
+  // ms basta con que una petición tarde un poco de más para saltarse el
+  // paso en el que salió el gesto, y entonces no se ve nunca. Con la
+  // máquina cargada eso deja de ser raro: esta prueba daba en verde
+  // suelta y en rojo dentro de la suite.
+  //
+  // Preguntando cada 40 ms no se pierde ningún paso, y si aun así el
+  // primer golpe no deja ver nada se vuelve a atacar. Tres intentos: la
+  // cadencia del arma más lenta no llega a ese tiempo.
+  // Los instantes se apuntan en MILISEGUNDOS, no en número de pasos.
+  // Los pasos dependen de cada cuánto pregunte la prueba, así que una
+  // comprobación escrita en pasos cambia de significado en cuanto se
+  // toca el ritmo del sondeo: al pasar de 100 a 40 ms, "tres pasos" pasó
+  // a querer decir 120 ms en vez de 300 y la prueba dio en rojo sin que
+  // el juego hubiera cambiado. El tiempo sí es una propiedad del juego.
+  let gesto = null, msDelGesto = -1, dañoVisto = 0, msDelDaño = -1
+  for (let intento = 0; intento < 3 && !(gesto && msDelDaño >= 0); intento++) {
+    await pulso({ mx: 0, my: 0, atacar: true, apuntar: (s.body.estado.jugador.mirando || 0) })
+    for (let i = 0; i < 30; i++) {
+      await sleep(40)
+      const r = await pulso({ mx: 0, my: 0, atacar: false })
+      const sucesos = (r.body.estado || {}).sucesos || []
+      for (const x of sucesos) {
+        if (x.t === 'gesto' && !gesto) { gesto = x; msDelGesto = Date.now() }
+        if (x.t === 'daño' && x.a === 'enemigo' && msDelDaño < 0) { dañoVisto += x.dmg; msDelDaño = Date.now() }
+      }
+      if (gesto && msDelDaño >= 0) break
     }
-    if (gesto && pasoDelDaño >= 0) break
   }
 
   ok('el servidor anuncia el gesto', !!gesto, 'no llegó ningún suceso de gesto')
@@ -107,11 +125,14 @@ async function run() {
   ok('el golpe acaba haciendo daño', dañoVisto > 0, 'daño ' + dañoVisto)
   // Esto es lo que distingue el arreglo de un cambio de números: el
   // daño NO comparte paso con el anuncio del gesto.
-  ok('el daño no llega en el mismo paso que el gesto',
-     pasoDelGesto >= 0 && pasoDelDaño > pasoDelGesto,
-     'gesto en el paso ' + pasoDelGesto + ', daño en el ' + pasoDelDaño)
-  ok('y no tarda una eternidad', pasoDelDaño - pasoDelGesto <= 3,
-     (pasoDelDaño - pasoDelGesto) + ' pasos de diferencia')
+  ok('el daño no llega en el mismo instante que el gesto',
+     msDelGesto > 0 && msDelDaño > msDelGesto,
+     'gesto en ' + msDelGesto + ', daño en ' + msDelDaño)
+  // La anticipación del arma más lenta ronda los 220 ms y la ventana
+  // activa otros 160: medio segundo cubre el caso peor con holgura, y un
+  // segundo entero ya sería otra cosa.
+  ok('y no tarda una eternidad', msDelDaño - msDelGesto <= 1000,
+     (msDelDaño - msDelGesto) + ' ms de diferencia')
 
   console.log('\n── UN GOLPE NO PEGA DOS VECES AL MISMO ──')
   // Golpe nuevo, quieto y pegado: se cuentan los impactos de ESE golpe

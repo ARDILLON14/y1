@@ -148,6 +148,16 @@ async function main() {
     resultados.push(...await enTandas(juntas, TRABAJOS))
   }
   if (solas.length) {
+    // Un respiro antes de las que miden tiempo.
+    //
+    // Cuando la tanda en paralelo termina, sus procesos de prueba ya han
+    // salido pero los SERVIDORES que arrancaron tardan un momento más en
+    // morir de verdad. Empezar encima de esa cola deja la máquina
+    // cargada justo cuando toca medir milisegundos, y entonces una de
+    // estas falla sin que haya nada roto. Pasó con test-arena-ventanas:
+    // en verde las tres veces que se lanzó sola, en rojo dentro de la
+    // suite.
+    if (juntas.length) await new Promise(r => setTimeout(r, 2500))
     console.log('\n── LAS QUE MIDEN TIEMPO, DE UNA EN UNA ──')
     resultados.push(...await enTandas(solas, 1))
   }

@@ -339,10 +339,16 @@ recompensa haya subido.
 que pelea todo el mundo al empezar: se matan seis para llegar a nivel 3 y no
 cuentan para nada. Añadirla es escribir contenido, no arreglar código.
 
-**3. El arte.** Tres objetos del catálogo tienen dibujo propio y el resto son
-emoji; una skin de siete tiene animación de caminar; no hay ninguna
-animación de arma. El mecanismo que las espera está comprobado y funciona
-(STEP 13), así que es dejar los archivos en su sitio. Yo no puedo dibujarlos.
+**3. El arte.** Diez archivos puestos, setenta y siete por hacer. No puedo
+dibujarlos, pero sí he convertido "faltan sprites" en una lista accionable:
+`npm run arte` dice cada archivo que falta con su nombre, su carpeta, sus
+medidas y qué pasa hoy sin él, ordenado por lo que más se nota. Y comprueba
+lo que ya está: si un dibujo no mide lo que declara su ficha, lo canta,
+porque un PNG del tamaño equivocado se ve mal y no avisa.
+
+Lo que más se nota son las seis animaciones de caminar que faltan: seis de
+las siete skins se deslizan sin mover las piernas. Después, las animaciones
+de golpe de las armas, cuyo mecanismo quedó comprobado en el STEP 13.
 
 **Y una cosa que NO está hecha a propósito:** la cadena de bloque. La FASE 18
 dice que CGRID se queda off-chain y así sigue, con su tope diario y su
