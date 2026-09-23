@@ -40,6 +40,7 @@ async function reproducirGuion(d, accionPedida) {
   // proximo golpe fuerte y los marcadores.
   STATE.telegraph = d.telegraph || null;
   if (STATE.telegraph) showTelegraph(STATE.telegraph); else clearTelegraph();
+  avisarVidaBaja(d);
   updateBadges();
 
   if (d.result && d.result.fled) {
@@ -246,9 +247,37 @@ async function render(d, action) {
   if (d.playerDied) return onDefeat(d);
 }
 
+// ── VIDA BAJA ──────────────────────────────────────────────
+//
+// El golpe anunciado del enemigo ya se avisa y se resalta el botón de
+// bloquear. Lo que faltaba era el otro lado: nadie te dice que bebas.
+//
+// Y no es un detalle de adorno. El banco de balance del proyecto mide
+// que un jugador que bloquea y se cura por debajo de un tercio gana el
+// 100 % de las peleas del juego, jefes incluidos; sin hacer esas dos
+// cosas, un nivel 1 muere cuatro veces antes de llegar al 3. O sea que
+// la dificultad no estaba en los números sino en dos mecánicas que nadie
+// te contaba. Una ya se contaba. Esta es la que faltaba.
+function avisarVidaBaja(d) {
+  var el = $('telegraph');
+  if (!el || STATE.telegraph) return;   // el golpe anunciado manda
+  // Los datos salen del turno que acaba de contestar el servidor, y solo
+  // se mira la variable global como último recurso: atarse a ella hacía
+  // que este aviso reventara el reproductor entero allí donde no
+  // estuviera definida.
+  var yo = (typeof PLAYER !== 'undefined' && PLAYER) ? PLAYER : {};
+  var hp = (d && typeof d.newHp === 'number') ? d.newHp : yo.hp;
+  var tope = (d && typeof d.maxHp === 'number') ? d.maxHp : (yo.maxHp || 0);
+  if (!tope || hp > tope * 0.34 || hp <= 0) { if (el.dataset.motivo === 'vida') clearTelegraph(); return; }
+  el.dataset.motivo = 'vida';
+  el.innerHTML = '🩸 <strong>Te queda poca vida</strong> — bebe 🧪 antes de seguir: curarse no te quita el turno de atacar.';
+  el.classList.add('show');
+}
+
 // ── TELEGRAFÍA ─────────────────────────────────────────────
 function showTelegraph(t) {
   var el = $('telegraph');
+  el.dataset.motivo = 'golpe';
   el.innerHTML = '⚠️ <strong>' + esc(t.name) + '</strong> — daño ×' + t.mult + '. Bloquea 🛡️ o interrumpe con Golpe de Escudo.';
   el.classList.add('show');
   $('enemy-fighter').classList.add('charging');
@@ -257,7 +286,7 @@ function showTelegraph(t) {
 }
 function clearTelegraph() {
   var el = $('telegraph');
-  if (el) { el.classList.remove('show'); el.innerHTML = ''; }
+  if (el) { el.classList.remove('show'); el.innerHTML = ''; el.dataset.motivo = ''; }
   $('enemy-fighter').classList.remove('charging');
   var blockBtn = $('btn-block');
   if (blockBtn) blockBtn.classList.remove('urgent');

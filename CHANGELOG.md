@@ -4,6 +4,80 @@ Cada versión con lo que la motivó. Los detalles completos están en `docs/CAMB
 
 ## v32 (en curso) — El mundo deja de pelear consigo mismo
 
+### La dificultad no estaba en los números: estaba en dos mecánicas que nadie te contaba
+
+El proyecto trae sus propias herramientas de diagnóstico y no había
+ejecutado ninguna. Las tres dicen cosas, y una dice algo incómodo.
+
+`revisar-codigo-muerto`: nada. `revisar-materiales`: todas las recetas se
+pueden completar, y solo aparece un objeto del catálogo que no pide nadie,
+el Corazón de Savia.
+
+`banco-balance` es la que importa. Con un robot que **bloquea el golpe
+anunciado y se cura por debajo de un tercio de vida**, la tasa de victoria
+es del 100 % contra todo el bestiario, jefes incluidos, terminando con
+entre el 43 % y el 94 % de vida. En las arenas, lo mismo: 100 % a todos
+los niveles.
+
+Y las mediciones del arranque dicen que un nivel 1 que no hace esas dos
+cosas muere cuatro veces antes de llegar al nivel 3.
+
+O sea que la dificultad de CriptoMundo no estaba en sus números. Estaba en
+dos mecánicas, y el tutorial tenía once pasos y no mencionaba ninguna.
+
+Una de las dos ya se enseñaba a medias: cuando el enemigo anuncia un golpe
+fuerte, la pantalla avisa y resalta el botón de bloquear. Eso estaba bien.
+Lo que faltaba era el otro lado: **nadie te dice que bebas**. Ahora, con
+la vida por debajo de un tercio, el mismo aviso dice que bebas y aclara lo
+que casi nadie deduce solo, que curarse no cuesta el turno de atacar. El
+golpe anunciado manda sobre ese aviso: si hay las dos cosas, se ve la
+urgente.
+
+Y el tutorial tiene dos pasos nuevos, colocados justo detrás del primer
+combate y no al final, porque de nada sirve enseñar esto en el paso once.
+
+No se ha tocado ni un número del combate. El troll, la araña y el 30 % que
+encaja un bloqueo siguen exactamente igual, y hay comprobaciones que lo
+exigen.
+
+### Tres fallos que salieron al hacerlo, y los tres míos
+
+**Uno rompía el juego.** Puse dos campos nuevos en `out` antes de que `out`
+existiera, así que beber en combate contestaba "Cannot access 'out' before
+initialization" y dejaba de funcionar por completo.
+
+**Otro rompía una pantalla.** El aviso de vida baja leía una variable
+global que no siempre existe, y reventaba el reproductor del turno entero
+allí donde faltaba. Ahora los topes de vida y maná viajan con la respuesta
+del turno, que además quita el acoplamiento.
+
+**Y el tercero era del lanzador de pruebas.** Un archivo que revienta no
+imprime resumen, así que no sumaba ninguna fallida: la suite decía "0
+fallidas" con un archivo en rojo encima. Eso es peor que no dar el número,
+porque se lee como que todo fue bien. Ahora avisa aparte y con nombre.
+
+### Y una prueba a la que le hice tres arreglos, dos de ellos malos
+
+`test-arena-ventanas` da para una lección entera.
+
+Fallaba dentro de la suite y pasaba suelta. Primer arreglo: preguntar cada
+40 ms en vez de cada 100, para no perderse el suceso que vive un solo
+paso. Correcto.
+
+Eso rompió otra comprobación que decía "el daño llega como mucho tres
+pasos después del gesto". Los pasos dependen de cada cuánto pregunte la
+prueba, no del juego. Reescrita en milisegundos. Correcto.
+
+Y entonces empezó a fallar SIEMPRE, y ahí me equivoqué dos veces. Primero
+supuse que el enemigo se movía y añadí un reacercamiento; no era eso.
+Hizo falta instrumentar una ejecución para verlo: **cada sondeo mandaba
+`atacar: false`**, y preguntando cada 40 ms ese "no" llegaba antes del paso
+de 100 ms del servidor y borraba el ataque. El arreglo de preguntar más
+deprisa se estaba pisando a sí mismo. Ahora mantiene la intención pulsada,
+que es además lo que hace un jugador.
+
+Cinco ejecuciones sueltas y tres suites completas en verde.
+
 ### "Faltan sprites" no es accionable; una lista con nombres sí
 
 El arte no lo puedo dibujar. Lo que sí se puede hacer es dejar de decir

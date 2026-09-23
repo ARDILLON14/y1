@@ -22,6 +22,13 @@
 // ═══════════════════════════════════════════════════════════════════
 const PRIMEROS_PASOS = [
   { id: 'p_combate', titulo: 'Gana tu primer combate', pista: 'Entra en Combate, elige la Araña Venenosa y ataca hasta vencerla.', modulo: 'combat', evento: 'first_kill', oro: 100 },
+  // Estos dos van justo después del primer combate y antes que nada más,
+  // porque son los que deciden si el juego se vive como difícil o como
+  // justo. El banco de balance lo mide: bloqueando el golpe anunciado y
+  // bebiendo por debajo de un tercio no se pierde ni una pelea en todo
+  // el juego. Sin saberlo, un nivel 1 muere cuatro veces antes del 3.
+  { id: 'p_bloquear', titulo: 'Bloquea un golpe anunciado', pista: 'Cuando el enemigo avise de un golpe fuerte, pulsa Bloquear 🛡️: encaja un tercio del daño en vez de todo.', modulo: 'combat', evento: 'first_block', oro: 120 },
+  { id: 'p_pocion', titulo: 'Bébete una poción peleando', pista: 'No hace falta esperar a morir: en combate, el botón 🧪 cura sin perder el turno de atacar.', modulo: 'combat', evento: 'first_potion', oro: 120 },
   { id: 'p_mision', titulo: 'Acepta una misión', pista: 'En Misiones, habla con Lyria la Alquimista y acepta "Cosecha de Hierbas".', modulo: 'misiones', evento: 'first_quest_accept', oro: 100 },
   { id: 'p_taller', titulo: 'Fabrica algo en el taller', pista: 'En Taller, la Poción de Vida solo necesita hierbas y agua.', modulo: 'crafting', evento: 'first_craft', oro: 150 },
   { id: 'p_nivel2', titulo: 'Alcanza el nivel 2', pista: 'Un par de combates bastan.', modulo: 'combat', evento: 'level_2', oro: 150 },

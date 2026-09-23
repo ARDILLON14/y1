@@ -6716,6 +6716,7 @@ async function reproducirGuion(d, accionPedida) {
   // proximo golpe fuerte y los marcadores.
   STATE.telegraph = d.telegraph || null;
   if (STATE.telegraph) showTelegraph(STATE.telegraph); else clearTelegraph();
+  avisarVidaBaja(d);
   updateBadges();
 
   if (d.result && d.result.fled) {
@@ -6922,9 +6923,37 @@ async function render(d, action) {
   if (d.playerDied) return onDefeat(d);
 }
 
+// ── VIDA BAJA ──────────────────────────────────────────────
+//
+// El golpe anunciado del enemigo ya se avisa y se resalta el botón de
+// bloquear. Lo que faltaba era el otro lado: nadie te dice que bebas.
+//
+// Y no es un detalle de adorno. El banco de balance del proyecto mide
+// que un jugador que bloquea y se cura por debajo de un tercio gana el
+// 100 % de las peleas del juego, jefes incluidos; sin hacer esas dos
+// cosas, un nivel 1 muere cuatro veces antes de llegar al 3. O sea que
+// la dificultad no estaba en los números sino en dos mecánicas que nadie
+// te contaba. Una ya se contaba. Esta es la que faltaba.
+function avisarVidaBaja(d) {
+  var el = $('telegraph');
+  if (!el || STATE.telegraph) return;   // el golpe anunciado manda
+  // Los datos salen del turno que acaba de contestar el servidor, y solo
+  // se mira la variable global como último recurso: atarse a ella hacía
+  // que este aviso reventara el reproductor entero allí donde no
+  // estuviera definida.
+  var yo = (typeof PLAYER !== 'undefined' && PLAYER) ? PLAYER : {};
+  var hp = (d && typeof d.newHp === 'number') ? d.newHp : yo.hp;
+  var tope = (d && typeof d.maxHp === 'number') ? d.maxHp : (yo.maxHp || 0);
+  if (!tope || hp > tope * 0.34 || hp <= 0) { if (el.dataset.motivo === 'vida') clearTelegraph(); return; }
+  el.dataset.motivo = 'vida';
+  el.innerHTML = '🩸 <strong>Te queda poca vida</strong> — bebe 🧪 antes de seguir: curarse no te quita el turno de atacar.';
+  el.classList.add('show');
+}
+
 // ── TELEGRAFÍA ─────────────────────────────────────────────
 function showTelegraph(t) {
   var el = $('telegraph');
+  el.dataset.motivo = 'golpe';
   el.innerHTML = '⚠️ <strong>' + esc(t.name) + '</strong> — daño ×' + t.mult + '. Bloquea 🛡️ o interrumpe con Golpe de Escudo.';
   el.classList.add('show');
   $('enemy-fighter').classList.add('charging');
@@ -6933,7 +6962,7 @@ function showTelegraph(t) {
 }
 function clearTelegraph() {
   var el = $('telegraph');
-  if (el) { el.classList.remove('show'); el.innerHTML = ''; }
+  if (el) { el.classList.remove('show'); el.innerHTML = ''; el.dataset.motivo = ''; }
   $('enemy-fighter').classList.remove('charging');
   var blockBtn = $('btn-block');
   if (blockBtn) blockBtn.classList.remove('urgent');
@@ -21613,6 +21642,8 @@ function findBattle(char, battleId, monsterId) {
 }
 
 function combatAction(char, battle, action, skillId, itemId) {
+  // Las dos mecánicas que el tutorial quiere poder dar por aprendidas.
+  let bloqueoPesado = false, objetoUsado = null
   const m = MONSTERS[battle.monsterId]
   const st = effectiveStats(char)
   const t = now()
@@ -21741,6 +21772,7 @@ function combatAction(char, battle, action, skillId, itemId) {
       imagen: plantilla.imagen || null, cura: playerHeal, mana: plantilla.mana || 0,
     })
     log.push('Usaste ' + plantilla.name)
+    objetoUsado = usar
   } else {
     return { error: 'Acción inválida', code: 400 }
   }
@@ -21799,7 +21831,18 @@ function combatAction(char, battle, action, skillId, itemId) {
       // El ataque anunciado se resuelve ahora
       const raw = (randInt(m.atk[0], m.atk[1]) + m.level * 2) * battle.telegraph.mult * phaseMult * escalaDaño(battle)
       let dmg = Math.max(1, Math.floor(raw * (1 - Math.min(0.7, (st.defense * (1 + defBuff)) / 250))))
-      if (battle.blocking) { dmg = Math.floor(dmg * 0.3); log.push(`¡Bloqueaste ${battle.telegraph.name}!`) }
+      if (battle.blocking) {
+        dmg = Math.floor(dmg * 0.3)
+        log.push(`¡Bloqueaste ${battle.telegraph.name}!`)
+        // Se dice con un campo y no solo con una frase del registro: el
+        // tutorial tiene que poder saber que el jugador APRENDIÓ a
+        // bloquear, y leer texto para eso es frágil.
+        //
+        // En una variable, no en `out`: aquí `out` todavía no existe —se
+        // declara más abajo— y escribir en él reventaba la petición
+        // entera con "Cannot access 'out' before initialization".
+        bloqueoPesado = true
+      }
       else {
         // Comerse el ataque anunciado también rompe el ritmo: se pierde
         // el combo y parte del maná. Bloquear o interrumpir compensa.
@@ -21843,6 +21886,8 @@ function combatAction(char, battle, action, skillId, itemId) {
   // y romperla no era el encargo. El guion se añade al lado; el paso 8
   // cambiará la pantalla para reproducirlo.
   const out = { playerDmg, enemyDmg, playerHeal, crit, miss, element, log, battle, combo: battle.combo, phase: battle.phase, telegraph: incoming || battle.telegraph }
+  if (bloqueoPesado) out.bloqueoPesado = true
+  if (objetoUsado) out.usoObjeto = objetoUsado
 
   g.anota('CHECK_VICTORY', {
     hpJugador: char.hp, hpJugadorMax: maxHpDe(char),
@@ -22554,6 +22599,13 @@ function guildRole(g, char) {
 // ═══════════════════════════════════════════════════════════════════
 const PRIMEROS_PASOS = [
   { id: 'p_combate', titulo: 'Gana tu primer combate', pista: 'Entra en Combate, elige la Araña Venenosa y ataca hasta vencerla.', modulo: 'combat', evento: 'first_kill', oro: 100 },
+  // Estos dos van justo después del primer combate y antes que nada más,
+  // porque son los que deciden si el juego se vive como difícil o como
+  // justo. El banco de balance lo mide: bloqueando el golpe anunciado y
+  // bebiendo por debajo de un tercio no se pierde ni una pelea en todo
+  // el juego. Sin saberlo, un nivel 1 muere cuatro veces antes del 3.
+  { id: 'p_bloquear', titulo: 'Bloquea un golpe anunciado', pista: 'Cuando el enemigo avise de un golpe fuerte, pulsa Bloquear 🛡️: encaja un tercio del daño en vez de todo.', modulo: 'combat', evento: 'first_block', oro: 120 },
+  { id: 'p_pocion', titulo: 'Bébete una poción peleando', pista: 'No hace falta esperar a morir: en combate, el botón 🧪 cura sin perder el turno de atacar.', modulo: 'combat', evento: 'first_potion', oro: 120 },
   { id: 'p_mision', titulo: 'Acepta una misión', pista: 'En Misiones, habla con Lyria la Alquimista y acepta "Cosecha de Hierbas".', modulo: 'misiones', evento: 'first_quest_accept', oro: 100 },
   { id: 'p_taller', titulo: 'Fabrica algo en el taller', pista: 'En Taller, la Poción de Vida solo necesita hierbas y agua.', modulo: 'crafting', evento: 'first_craft', oro: 150 },
   { id: 'p_nivel2', titulo: 'Alcanza el nivel 2', pista: 'Un par de combates bastan.', modulo: 'combat', evento: 'level_2', oro: 150 },
@@ -23439,7 +23491,14 @@ store.analytics = (store.analytics && store.analytics.users) ? store.analytics :
 
 // El orden importa: define el embudo de onboarding que queremos vigilar
 const FUNNEL_STEPS = [
-  'register', 'first_combat', 'first_kill', 'level_2', 'first_quest_accept',
+  // Bloquear un golpe anunciado y beber en mitad del combate son las DOS
+  // cosas que separan a un jugador que no pierde nunca de uno que muere
+  // cuatro veces antes del nivel 3. Lo dice el banco de balance del
+  // propio proyecto: bloqueando y curándose por debajo de un tercio, la
+  // tasa de victoria es del 100 % contra TODO, jefes incluidos. Y el
+  // tutorial no las mencionaba, así que la dificultad del juego no
+  // estaba en sus números sino en dos mecánicas que nadie te cuenta.
+  'register', 'first_combat', 'first_block', 'first_potion', 'first_kill', 'level_2', 'first_quest_accept',
   'first_craft', 'first_quest_complete', 'level_5', 'first_market_buy',
   'first_gather', 'first_harvest', 'first_arena',
   'first_dungeon', 'first_pvp', 'level_10', 'day_2_return',
@@ -27167,6 +27226,9 @@ async function handleAPI(req, res, pathname, query) {
     if (!battle) battle = startBattle(char, monsterId)
     const r = combatAction(char, battle, action, skillId, body.itemId)
     if (r.error) return fail(res, r.error, r.code || 400)
+    // Las dos mecánicas que deciden si el juego se vive como justo.
+    if (r.bloqueoPesado) step(p.username, 'first_block')
+    if (r.usoObjeto) step(p.username, 'first_potion')
 
     // Respuesta compatible con el cliente v2 (+ campos nuevos)
     return json(res, {
@@ -27174,6 +27236,11 @@ async function handleAPI(req, res, pathname, query) {
       result: { playerDmg: r.playerDmg, enemyDmg: r.enemyDmg, isCrit: r.crit, isMiss: r.miss, playerHeal: r.playerHeal, element: r.element, fled: !!r.fled, enemyDied: !!r.enemyDied, playerDied: !!r.playerDied, log: r.log },
       combo: r.combo || 0, phase: r.phase || 1, telegraph: r.telegraph || null,
       newHp: char.hp, newMp: char.mp,
+      // Los topes viajan con el turno. La pantalla necesita saber si la
+      // vida que queda es poca, y sacarlo de una variable global suya
+      // ataba el aviso a que esa variable existiera: en la prueba de
+      // pantalla no existía y reventaba el reproductor del turno entero.
+      maxHp: maxHpDe(char), maxMp: maxMpDe(char),
       newMonsterHp: r.fled ? battle.enemyHp : (r.enemyDied ? 0 : battle.enemyHp),
       enemyMaxHp: battle.enemyMaxHp,
       enemyDied: !!r.enemyDied, playerDied: !!r.playerDied, fled: !!r.fled,

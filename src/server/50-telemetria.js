@@ -16,7 +16,14 @@ store.analytics = (store.analytics && store.analytics.users) ? store.analytics :
 
 // El orden importa: define el embudo de onboarding que queremos vigilar
 const FUNNEL_STEPS = [
-  'register', 'first_combat', 'first_kill', 'level_2', 'first_quest_accept',
+  // Bloquear un golpe anunciado y beber en mitad del combate son las DOS
+  // cosas que separan a un jugador que no pierde nunca de uno que muere
+  // cuatro veces antes del nivel 3. Lo dice el banco de balance del
+  // propio proyecto: bloqueando y curándose por debajo de un tercio, la
+  // tasa de victoria es del 100 % contra TODO, jefes incluidos. Y el
+  // tutorial no las mencionaba, así que la dificultad del juego no
+  // estaba en sus números sino en dos mecánicas que nadie te cuenta.
+  'register', 'first_combat', 'first_block', 'first_potion', 'first_kill', 'level_2', 'first_quest_accept',
   'first_craft', 'first_quest_complete', 'level_5', 'first_market_buy',
   'first_gather', 'first_harvest', 'first_arena',
   'first_dungeon', 'first_pvp', 'level_10', 'day_2_return',

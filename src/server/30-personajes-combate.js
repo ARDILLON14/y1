@@ -670,6 +670,8 @@ function findBattle(char, battleId, monsterId) {
 }
 
 function combatAction(char, battle, action, skillId, itemId) {
+  // Las dos mecánicas que el tutorial quiere poder dar por aprendidas.
+  let bloqueoPesado = false, objetoUsado = null
   const m = MONSTERS[battle.monsterId]
   const st = effectiveStats(char)
   const t = now()
@@ -798,6 +800,7 @@ function combatAction(char, battle, action, skillId, itemId) {
       imagen: plantilla.imagen || null, cura: playerHeal, mana: plantilla.mana || 0,
     })
     log.push('Usaste ' + plantilla.name)
+    objetoUsado = usar
   } else {
     return { error: 'Acción inválida', code: 400 }
   }
@@ -856,7 +859,18 @@ function combatAction(char, battle, action, skillId, itemId) {
       // El ataque anunciado se resuelve ahora
       const raw = (randInt(m.atk[0], m.atk[1]) + m.level * 2) * battle.telegraph.mult * phaseMult * escalaDaño(battle)
       let dmg = Math.max(1, Math.floor(raw * (1 - Math.min(0.7, (st.defense * (1 + defBuff)) / 250))))
-      if (battle.blocking) { dmg = Math.floor(dmg * 0.3); log.push(`¡Bloqueaste ${battle.telegraph.name}!`) }
+      if (battle.blocking) {
+        dmg = Math.floor(dmg * 0.3)
+        log.push(`¡Bloqueaste ${battle.telegraph.name}!`)
+        // Se dice con un campo y no solo con una frase del registro: el
+        // tutorial tiene que poder saber que el jugador APRENDIÓ a
+        // bloquear, y leer texto para eso es frágil.
+        //
+        // En una variable, no en `out`: aquí `out` todavía no existe —se
+        // declara más abajo— y escribir en él reventaba la petición
+        // entera con "Cannot access 'out' before initialization".
+        bloqueoPesado = true
+      }
       else {
         // Comerse el ataque anunciado también rompe el ritmo: se pierde
         // el combo y parte del maná. Bloquear o interrumpir compensa.
@@ -900,6 +914,8 @@ function combatAction(char, battle, action, skillId, itemId) {
   // y romperla no era el encargo. El guion se añade al lado; el paso 8
   // cambiará la pantalla para reproducirlo.
   const out = { playerDmg, enemyDmg, playerHeal, crit, miss, element, log, battle, combo: battle.combo, phase: battle.phase, telegraph: incoming || battle.telegraph }
+  if (bloqueoPesado) out.bloqueoPesado = true
+  if (objetoUsado) out.usoObjeto = objetoUsado
 
   g.anota('CHECK_VICTORY', {
     hpJugador: char.hp, hpJugadorMax: maxHpDe(char),

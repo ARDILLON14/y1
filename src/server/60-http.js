@@ -405,6 +405,9 @@ async function handleAPI(req, res, pathname, query) {
     if (!battle) battle = startBattle(char, monsterId)
     const r = combatAction(char, battle, action, skillId, body.itemId)
     if (r.error) return fail(res, r.error, r.code || 400)
+    // Las dos mecánicas que deciden si el juego se vive como justo.
+    if (r.bloqueoPesado) step(p.username, 'first_block')
+    if (r.usoObjeto) step(p.username, 'first_potion')
 
     // Respuesta compatible con el cliente v2 (+ campos nuevos)
     return json(res, {
@@ -412,6 +415,11 @@ async function handleAPI(req, res, pathname, query) {
       result: { playerDmg: r.playerDmg, enemyDmg: r.enemyDmg, isCrit: r.crit, isMiss: r.miss, playerHeal: r.playerHeal, element: r.element, fled: !!r.fled, enemyDied: !!r.enemyDied, playerDied: !!r.playerDied, log: r.log },
       combo: r.combo || 0, phase: r.phase || 1, telegraph: r.telegraph || null,
       newHp: char.hp, newMp: char.mp,
+      // Los topes viajan con el turno. La pantalla necesita saber si la
+      // vida que queda es poca, y sacarlo de una variable global suya
+      // ataba el aviso a que esa variable existiera: en la prueba de
+      // pantalla no existía y reventaba el reproductor del turno entero.
+      maxHp: maxHpDe(char), maxMp: maxMpDe(char),
       newMonsterHp: r.fled ? battle.enemyHp : (r.enemyDied ? 0 : battle.enemyHp),
       enemyMaxHp: battle.enemyMaxHp,
       enemyDied: !!r.enemyDied, playerDied: !!r.playerDied, fled: !!r.fled,

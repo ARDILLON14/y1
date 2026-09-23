@@ -55,7 +55,7 @@ const PRUEBAS = [
   ['test-muerte-progreso', 3886], ['test-sprites-armas', 3887],
   ['test-paginas', 3888], ['test-autoridad-servidor', 3889],
   ['test-partida-completa', 3890], ['test-descanso', 3891],
-  ['test-primera-mision', 3892],
+  ['test-primera-mision', 3892], ['test-ensenar-combate', 3893],
 ]
 
 // Estas miden TIEMPO: duraciones de animación, ventanas de golpe,
@@ -165,9 +165,17 @@ async function main() {
   const malas = resultados.filter(r => r.codigo !== 0)
   const totalOk = resultados.reduce((a, r) => a + (r.ok || 0), 0)
   const totalMal = resultados.reduce((a, r) => a + (r.fallidas || 0), 0)
+  // Un archivo que REVIENTA no imprime resumen, así que no suma ninguna
+  // fallida y el total decía "0 fallidas" con un archivo en rojo encima.
+  // Eso es peor que no dar el número: se lee como que todo fue bien.
+  const reventados = resultados.filter(r => r.codigo !== 0 && r.fallidas === null)
 
   console.log('\n══════════════════════════════════════════════')
   console.log(`  ${resultados.length} archivos · ${totalOk} comprobaciones OK · ${totalMal} fallidas`)
+  if (reventados.length) {
+    console.log(`  ⚠️  ${reventados.length} archivo(s) reventaron sin llegar a contar: ` +
+                reventados.map(r => r.nombre).join(', '))
+  }
   console.log(`  ${((Date.now() - t0) / 1000).toFixed(0)}s en total`)
   console.log('══════════════════════════════════════════════')
 

@@ -103,11 +103,49 @@ async function run() {
   // a querer decir 120 ms en vez de 300 y la prueba dio en rojo sin que
   // el juego hubiera cambiado. El tiempo sí es una propiedad del juego.
   let gesto = null, msDelGesto = -1, dañoVisto = 0, msDelDaño = -1
+  // Antes de cada intento se vuelve a acercar y se vuelve a apuntar.
+  //
+  // El enemigo NO se queda quieto esperando: entre el momento en que se
+  // llega a su lado y el momento en que se golpea, se ha movido. La
+  // primera versión atacaba una vez, quieta y con el ángulo con el que
+  // había llegado, y a veces golpeaba al aire: "daño 0", en rojo, sin
+  // que hubiera nada roto. Apuntar a donde está el enemigo AHORA es lo
+  // que haría cualquiera.
+  const mirarAlMasCerca = e => {
+    const j = e.jugador
+    let mejor = null, md = 1e9
+    for (const en of (e.enemigos || [])) {
+      if (en.hp <= 0) continue
+      const d = Math.hypot(en.x - j.x, en.y - j.y)
+      if (d < md) { md = d; mejor = en }
+    }
+    if (!mejor) return null
+    return { ang: Math.atan2(mejor.y - j.y, mejor.x - j.x), d: md }
+  }
   for (let intento = 0; intento < 3 && !(gesto && msDelDaño >= 0); intento++) {
-    await pulso({ mx: 0, my: 0, atacar: true, apuntar: (s.body.estado.jugador.mirando || 0) })
+    // Reacercarse: hasta 25 pasos, que sobra para recorrer la arena.
+    for (let k = 0; k < 25; k++) {
+      const objetivo = mirarAlMasCerca(s.body.estado || {})
+      if (!objetivo) break
+      if (objetivo.d < 40) break
+      await sleep(60)
+      s = await pulso({ mx: Math.cos(objetivo.ang), my: Math.sin(objetivo.ang), apuntar: objetivo.ang, atacar: false })
+    }
+    const objetivo = mirarAlMasCerca(s.body.estado || {}) || { ang: (s.body.estado.jugador.mirando || 0) }
+    // Se MANTIENE la intención de atacar mientras se mira, en vez de
+    // retirarla en el sondeo siguiente.
+    //
+    // Este fue el precio de preguntar más deprisa, y costó una ejecución
+    // instrumentada verlo: el pulso no provoca el paso del servidor, solo
+    // deja la intención. Preguntando cada 40 ms, el `atacar: false` del
+    // sondeo llegaba ANTES del paso de 100 ms y borraba el ataque, así
+    // que no salía ningún gesto nunca. Mantenerlo pulsado es además lo
+    // que hace un jugador: la cadencia del arma ya limita el ritmo.
+    await pulso({ mx: 0, my: 0, atacar: true, apuntar: objetivo.ang })
     for (let i = 0; i < 30; i++) {
       await sleep(40)
-      const r = await pulso({ mx: 0, my: 0, atacar: false })
+      const r = await pulso({ mx: 0, my: 0, atacar: true, apuntar: objetivo.ang })
+      s = r
       const sucesos = (r.body.estado || {}).sucesos || []
       for (const x of sucesos) {
         if (x.t === 'gesto' && !gesto) { gesto = x; msDelGesto = Date.now() }
