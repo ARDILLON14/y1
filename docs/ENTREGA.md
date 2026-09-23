@@ -8,8 +8,8 @@ La foto de partida está en `docs/AUDITORIA_V31.md` y no se reescribe: sirve
 para comparar. El relato largo de cada cambio, con el porqué, está en
 `CHANGELOG.md`.
 
-**Estado al cerrar:** 48 archivos de prueba · 1.218 comprobaciones · 0 fallos
-· 162 s con `npm test`.
+**Estado al cerrar:** 50 archivos de prueba · 1.254 comprobaciones · 0 fallos
+· ~190 s con `npm test`.
 
 ---
 
@@ -325,31 +325,100 @@ de todos. Es contenido que falta, no un fallo.
 
 ---
 
+## STEP 18 — El juego premiaba dejarse matar
+
+**ARCHIVOS TOCADOS** · `src/server/30-personajes-combate.js`, `60-http.js`.
+**QUÉ SE ARREGLÓ** · no existía ninguna forma de recuperar vida salvo
+morir. Un nivel 1 mata a una araña en 5,2 turnos y muere en 12,5 —o sea
+que una pelea la gana— pero cada araña le cuesta 478 de vida y entre
+combate y combate no recuperaba nada. Morir costaba el 8 % del oro y
+devolvía media vida; una poción, 20 de oro por 220. El juego premiaba
+dejarse matar.
+**QUÉ SE AÑADIÓ** · recuperación fuera de combate, 1 % del tope cada
+segundo y medio. No se regenera con una batalla abierta ni dentro de la
+arena. No se ha tocado el daño, ni la vida, ni los monstruos.
+**PRUEBAS AÑADIDAS** · `test-descanso.js` (14). Falla 5 veces contra el
+código anterior.
+**MEDICIÓN** · peleando sin parar, las muertes se quedan igual dentro del
+ruido (3,3 y 4,3 de media en tandas de tres). Descansando un minuto entre
+peleas, bajan a 0,3. Ninguna pelea es más fácil; lo que cambia es que
+descansar sirve para algo.
+**EL PRIMER INTENTO ESTUVO MAL** · 1 % cada cuatro segundos daba 57 de
+vida en veinte segundos contra los 478 que cuesta una araña. El mecanismo
+estaba bien y el número no; se ancló a lo que cuesta una pelea.
+**PRUEBAS QUE PASAN** · 49 archivos.
+**SIGUIENTE** · STEP 19.
+
+---
+
+## STEP 19 — La araña ya tiene misión
+
+**ARCHIVOS TOCADOS** · `src/server/40-mundo-mercado.js`,
+`test-partida-completa.js`.
+**QUÉ SE ARREGLÓ** · la araña es el primer enemigo de todos y no tenía
+misión: se matan seis para llegar a nivel 3 y no contaban para nada. La
+primera misión que veía un recién llegado era matar ocho trolls.
+**QUÉ SE AÑADIÓ** · «Las Arañas del Sendero», cinco arañas, nivel 1, la
+primera de la lista. Cinco porque llegar a nivel 3 cuesta seis: se
+completa justo antes de subir. La recompensa lleva tres pociones a
+propósito, que es lo que le falta a un nivel 1 en ese punto exacto.
+**PRUEBAS AÑADIDAS** · `test-primera-mision.js` (20). Falla 3 veces
+contra el código anterior.
+**HALLAZGO** · al aceptar una misión, el progreso se siembra con lo que
+YA habías hecho, así que la de las arañas nace completa si vienes de
+subir a nivel 3 matándolas. Está bien que sea así, pero significa que
+«pelear la hace avanzar» no siempre se puede observar.
+**PRUEBAS QUE PASAN** · 50 archivos.
+**SIGUIENTE** · STEP 20.
+
+---
+
+## STEP 20 — El arte, convertido en una lista
+
+**ARCHIVOS TOCADOS** · `revisar-arte.js` (nuevo), `run-tests.js`,
+`test-arena-ventanas.js`, `package.json`, `README.md`.
+**QUÉ SE ARREGLÓ** · nada del juego. Y una prueba que fallaba dentro de
+la suite y pasaba suelta, por dos motivos encadenados: medía milisegundos
+encima de la cola de servidores de la tanda anterior, y preguntaba cada
+100 ms por un suceso que vive exactamente un paso de 100 ms.
+**QUÉ SE AÑADIÓ** · `npm run arte`: la lista de arte que falta, con
+nombre, carpeta, medidas y qué pasa hoy sin cada archivo, ordenada por lo
+que más se nota. Y la comprobación inversa: si un dibujo no mide lo que
+declara su ficha, lo canta.
+**MEDICIÓN** · 10 archivos puestos, 77 por hacer, 0 rotos.
+**SE COMPROBÓ QUE DETECTA** · se le metieron los dos casos rotos a
+propósito y los dos salieron con su nombre y su motivo.
+**LECCIÓN** · al cambiar el ritmo del sondeo se rompió una comprobación
+que decía «el daño llega como mucho tres pasos después del gesto». Los
+pasos dependen de cada cuánto pregunte la prueba, no del juego. Ahora está
+escrita en milisegundos.
+**PRUEBAS QUE PASAN** · 50 archivos · 1.254 comprobaciones · 0 fallos.
+**SIGUIENTE** · nada pendiente por mi parte. Ver abajo.
+
+---
+
 ## Lo que queda, y por qué no lo he hecho yo
 
-Tres cosas, y ninguna es un arreglo pendiente.
+Los tres puntos que quedaban se han atacado. Lo que sigue abierto es más
+corto y más claro.
 
-**1. El nivel de dificultad.** El ruido del arranque está quitado y medido,
-pero cuán duro debe ser el juego es una decisión tuya. Las dos cifras sobre
-la mesa: llegar a nivel 3 cuesta de 36 a 53 ataques con 2 a 5 muertes, y el
-jefe de mazmorra cuesta un 36 % más de vida que antes del STEP 11 sin que su
-recompensa haya subido.
+**Dibujar el arte.** 77 archivos, y no puedo hacerlos yo. `npm run arte`
+dice cuáles, dónde y con qué medidas, y avisa si lo que se deja no mide lo
+que debe. Los seis que más se notan son las animaciones de caminar: seis
+de las siete skins se deslizan sin mover las piernas.
 
-**2. Contenido que falta.** No hay misión para la araña, que es contra lo
-que pelea todo el mundo al empezar: se matan seis para llegar a nivel 3 y no
-cuentan para nada. Añadirla es escribir contenido, no arreglar código.
+**Decidir si el equilibrio está donde lo quieres.** Yo he quitado el ruido
+y he cerrado el bucle que faltaba, pero no he movido la dificultad hacia
+arriba ni hacia abajo, y hay dos números que siguen esperando una decisión
+tuya:
 
-**3. El arte.** Diez archivos puestos, setenta y siete por hacer. No puedo
-dibujarlos, pero sí he convertido "faltan sprites" en una lista accionable:
-`npm run arte` dice cada archivo que falta con su nombre, su carpeta, sus
-medidas y qué pasa hoy sin él, ordenado por lo que más se nota. Y comprueba
-lo que ya está: si un dibujo no mide lo que declara su ficha, lo canta,
-porque un PNG del tamaño equivocado se ve mal y no avisa.
+- El jefe de mazmorra cuesta un 36 % más de vida desde el STEP 11 y su
+  recompensa no ha subido. O se sube, o se deja y es más duro a propósito.
+- La recuperación fuera de combate va a 1 % cada segundo y medio. Está
+  anclada a lo que cuesta una pelea, pero es un dial: sube o baja
+  `REGEN_CADA_MS` en `30-personajes-combate.js` y `npm test` te dice si
+  algo se rompe.
 
-Lo que más se nota son las seis animaciones de caminar que faltan: seis de
-las siete skins se deslizan sin mover las piernas. Después, las animaciones
-de golpe de las armas, cuyo mecanismo quedó comprobado en el STEP 13.
-
-**Y una cosa que NO está hecha a propósito:** la cadena de bloque. La FASE 18
-dice que CGRID se queda off-chain y así sigue, con su tope diario y su
+**Y una cosa que NO está hecha a propósito:** la cadena de bloque. La FASE
+18 dice que CGRID se queda off-chain y así sigue, con su tope diario y su
 auditoría, y la página pública lo dice con todas las letras.
