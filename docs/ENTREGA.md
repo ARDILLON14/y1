@@ -8,7 +8,7 @@ La foto de partida está en `docs/AUDITORIA_V31.md` y no se reescribe: sirve
 para comparar. El relato largo de cada cambio, con el porqué, está en
 `CHANGELOG.md`.
 
-**Estado al cerrar:** 58 archivos de prueba · 1.602 comprobaciones · 0 fallos
+**Estado al cerrar:** 59 archivos de prueba · 1.637 comprobaciones · 0 fallos
 · ~186 s con `npm test`.
 
 ---
@@ -1007,6 +1007,88 @@ Las dos las destapó esta fase, y las dos fallaban en silencio:
 
 **SIGUIENTE** · FASE F (tutorial y telemetría) y FASE G (la convención de
 arte y `npm run arte:ver`).
+
+---
+
+## FASES F y G — El tutorial que se puede medir, y el arte que se puede comprobar
+
+**ARCHIVOS TOCADOS** · `src/server/45-primeros-pasos.js`,
+`src/server/59-mundo-combate.js`, `src/server/57-golpe.js`,
+`src/server/58-arena.js`, `revisar-arte.js`, `ver-arte.js` (nuevo),
+`docs/GUIA_PIXEL_ART_ARMAS.md` (nuevo), `test-arte-armas.js` (nuevo),
+`test-ensenar-combate.js`, `package.json`, `run-tests.js`.
+
+### FASE F — Tutorial y telemetría
+
+- **`p_barra`**, 120 de oro, justo antes de bloquear y beber. El orden no
+  es cosmético: la barra es donde están la poción y el arma, así que
+  enseñar a beber antes de enseñar dónde está la poción es enseñar al
+  revés. Se completa al elegir una ranura con arma.
+- **Los textos de `p_bloquear` y `p_pocion`** ahora nombran los dos
+  sitios donde se pelea: clic derecho (o botón 🛡️) en el mundo, y sus
+  botones en el combate por turnos. Decir solo uno dejaba al jugador
+  buscando un botón que en su pantalla no está.
+- **Contadores**: intenciones descartadas por exceso, y golpes rechazados
+  **con su motivo** (`ranura_vacia`, `sin_existencias`, `muerto`,
+  `en_otro_combate`, `no_se_usa_peleando`, `sin_mana`). Saber que se
+  rechazaron mil golpes no sirve; saber que novecientos eran por ranura
+  vacía dice que la barra no se entiende.
+
+### FASE G — El arte
+
+- **`docs/GUIA_PIXEL_ART_ARMAS.md`**, para quien dibuja. Documenta la
+  convención que **ya existe** (`assets/items/`), no la que proponía el
+  encargo: la decisión D7 de la auditoría comprobó que no hay ninguna
+  carpeta `public/`. La guía dice por qué se descartó, porque una guía
+  que calla la alternativa deja a quien dibuja creyendo que se la
+  inventó él.
+- **`assets/items/<id>.json`**, la ficha del artista: `empunadura`,
+  `spriteAngulo`, `escala`. **Gana sobre el catálogo**, que gana sobre el
+  valor por defecto. El artista no toca código.
+- **Cuatro avisos nuevos en `npm run arte`**: medida distinta de 32×32,
+  píxeles a medio transparente, empuñadura fuera de 0–1 o sobre un hueco,
+  y ficha ilegible. Los dos últimos necesitan leer el canal alfa de
+  verdad, así que hay un lector de PNG con zlib, que viene con Node.
+- **`npm run arte:ver`**: una página suelta con cada arma en la mano de
+  un personaje de prueba, repitiendo su golpe con los tiempos de verdad,
+  sobre hierba, piedra y oscuro, a ×2 y ×4, con un punto rojo en la
+  empuñadura.
+
+**MEDICIÓN** · las tres espadas usan la empuñadura por defecto
+(0,79 · 0,79) y el lector de alfa confirma que **en las tres cae sobre
+dibujo**. Era la pregunta que dejó abierta la decisión D8, y la respuesta
+es que hoy no hace falta tocarlas.
+
+**PRUEBAS AÑADIDAS** · `test-arte-armas.js` (34). Los seis casos rotos se
+inyectan **sobre un arma y no sobre una skin**, que es como lo pide la
+sección 7 y es exactamente el fallo del STEP 20. Los PNG se fabrican con
+zlib dentro de la prueba.
+
+**PRUEBAS QUE PASAN** · 59 archivos · 1.637 comprobaciones · 0 fallos ·
+186 s.
+
+**UN EFECTO DE MI PROPIO CAMBIO DE LA FASE E, QUE DESTAPÓ ESTA** · al
+poner `pixelArt: true` se puso filtro NEAREST en **todas** las texturas,
+y la tira de caminar de la Zarigüeya no es pixel art: está pintada a
+587×500 con bordes suaves y se dibuja a 0,62 de su tamaño. Reducir una
+ilustración pintada con NEAREST la deja dentada. Lo encontró el aviso
+nuevo de píxeles a medias, que la marcó con un 43 %. Ahora esa textura
+vuelve a LINEAR salvo que su ficha diga `pixelArt: true`.
+
+**DOS EXPECTATIVAS CAMBIADAS, LAS DOS PORQUE EL ENCARGO LO PIDE**
+- `test-ensenar-combate` exigía que bloquear fuera **exactamente** el
+  paso siguiente al primer combate. Ahora hay uno en medio, `p_barra`,
+  porque la FASE F lo pide «justo antes de ellos». La comprobación
+  defiende lo mismo sin atarse al número.
+- Y el aviso de píxeles a medias **no mira** `assets/skins/`: ahí el
+  borde suave es correcto. La primera versión marcaba las cuatro
+  ilustraciones de la Zarigüeya como rotas.
+
+**SE SABE Y NO SE ARREGLA AQUÍ**
+- Siguen faltando los 77 dibujos. Ahora hay más formas de comprobarlos y
+  una guía para hacerlos, pero dibujarlos sigue sin poder hacerlo yo.
+- El arma en la mano se pinta con su emoji: el PNG con empuñadura es lo
+  siguiente, y ya no está bloqueado (la ficha y el visor existen).
 
 ---
 

@@ -27,8 +27,16 @@ const PRIMEROS_PASOS = [
   // justo. El banco de balance lo mide: bloqueando el golpe anunciado y
   // bebiendo por debajo de un tercio no se pierde ni una pelea en todo
   // el juego. Sin saberlo, un nivel 1 muere cuatro veces antes del 3.
-  { id: 'p_bloquear', titulo: 'Bloquea un golpe anunciado', pista: 'Cuando el enemigo avise de un golpe fuerte, pulsa Bloquear 🛡️: encaja un tercio del daño en vez de todo.', modulo: 'combat', evento: 'first_block', oro: 120 },
-  { id: 'p_pocion', titulo: 'Bébete una poción peleando', pista: 'No hace falta esperar a morir: en combate, el botón 🧪 cura sin perder el turno de atacar.', modulo: 'combat', evento: 'first_potion', oro: 120 },
+  // Y antes de los dos, la barra: son las teclas con las que se bloquea
+  // y se bebe en el mundo en tiempo real, así que enseñar a bloquear sin
+  // haber enseñado dónde está la poción es enseñar al revés.
+  { id: 'p_barra', titulo: 'Elige tu arma con las teclas 1–0', pista: 'Abajo tienes la barra de objetos. Las teclas 1 a 0 la manejan, y la rueda del ratón también. La ranura que elijas es el arma que llevas puesta.', modulo: 'mundo2d', evento: 'first_hotbar_switch', oro: 120 },
+  // Los textos hablan de los dos sitios donde se pelea. En el mundo en
+  // tiempo real se bloquea con el clic derecho y se bebe con la tecla de
+  // la poción; en el combate por turnos, con sus botones. Decir solo uno
+  // dejaba al jugador buscando un botón que en su pantalla no está.
+  { id: 'p_bloquear', titulo: 'Bloquea un golpe anunciado', pista: 'Cuando el enemigo avise de un golpe fuerte, bloquea: en el mundo con el clic derecho (o el botón 🛡️ en el móvil), y en el combate por turnos con Bloquear. Encaja un tercio del daño en vez de todo.', modulo: 'combat', evento: 'first_block', oro: 120 },
+  { id: 'p_pocion', titulo: 'Bébete una poción peleando', pista: 'No hace falta esperar a morir. En el mundo, pon la poción en la barra y pulsa su tecla dos veces; en el combate por turnos, el botón 🧪. Cura sin perder el turno de atacar.', modulo: 'combat', evento: 'first_potion', oro: 120 },
   { id: 'p_mision', titulo: 'Acepta una misión', pista: 'En Misiones, habla con Lyria la Alquimista y acepta "Cosecha de Hierbas".', modulo: 'misiones', evento: 'first_quest_accept', oro: 100 },
   { id: 'p_taller', titulo: 'Fabrica algo en el taller', pista: 'En Taller, la Poción de Vida solo necesita hierbas y agua.', modulo: 'crafting', evento: 'first_craft', oro: 150 },
   { id: 'p_nivel2', titulo: 'Alcanza el nivel 2', pista: 'Un par de combates bastan.', modulo: 'combat', evento: 'level_2', oro: 150 },

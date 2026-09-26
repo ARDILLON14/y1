@@ -263,6 +263,7 @@ function tiraDe(id) {
 function armaVista(id) {
   const base = ARMAS[id] || ARMAS['puños']
   const t = (typeof template === 'function' && template(id)) || null
+  const ficha = typeof fichaDeArma === 'function' ? fichaDeArma(id) : null
   return {
     id, ...base,
     nombre: (t && t.name) || base.nombre,
@@ -272,11 +273,14 @@ function armaVista(id) {
     // (8,8) y el pomo en (29,29), o sea -135°. El dibujante necesita
     // saberlo para girarlo bien; si un sprite futuro apunta a otro
     // lado, se declara aquí y no se toca el renderer.
-    spriteAngulo: t && t.spriteAngulo != null ? t.spriteAngulo : -2.356,
+    // La ficha del artista manda sobre el catálogo, y el catálogo sobre
+    // el valor por defecto (sección G del encargo de combate).
+    spriteAngulo: (ficha && ficha.spriteAngulo != null) ? ficha.spriteAngulo
+      : (t && t.spriteAngulo != null ? t.spriteAngulo : -2.356),
     // Dónde agarra la mano el dibujo, en fracción de su propio tamaño.
     // Sin esto el arma se dibujaba centrada y quedaba flotando medio
     // sprite por delante del personaje, como si la llevara a rastras.
-    empunadura: (t && t.empunadura) || { x: 0.79, y: 0.79 },
+    empunadura: (ficha && ficha.empunadura) || (t && t.empunadura) || { x: 0.79, y: 0.79 },
     tipo: base.proyectil ? 'ranged' : 'melee',
     // Cómo se mueve el arma al golpear. Un hacha no barre igual que una
     // lanza, y con un solo gesto para todas el arma equipada se nota en

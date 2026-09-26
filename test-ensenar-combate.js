@@ -64,10 +64,24 @@ async function run() {
   check('la de beber aclara que no cuesta el turno',
     !!pocion && /sin perder el turno|no.*turno/i.test(pocion.pista), (pocion || {}).pista)
   // Y que vayan pronto: de nada sirve enseñarlo en el paso once.
+  //
+  // Antes esto exigía que bloquear fuera EXACTAMENTE el paso siguiente
+  // al primer combate. Desde la FASE F hay uno en medio, p_barra, y no
+  // por capricho: la barra es donde están la poción y el arma, así que
+  // enseñar a bebérsela antes de enseñar dónde está era enseñar al
+  // revés. Lo que esta comprobación defiende sigue siendo lo mismo —que
+  // las dos mecánicas que deciden el juego se enseñen al principio— y
+  // ahora lo dice sin atarse al número exacto.
   const iBloq = lista.findIndex(x => x.id === 'p_bloquear')
+  const iPoc = lista.findIndex(x => x.id === 'p_pocion')
   const iCombate = lista.findIndex(x => x.id === 'p_combate')
+  const iBarra = lista.findIndex(x => x.id === 'p_barra')
   check('van justo después del primer combate, no al final',
-    iBloq === iCombate + 1 && iBloq < 4, `combate en ${iCombate}, bloquear en ${iBloq}`)
+    iBloq > iCombate && iBloq < 5 && iPoc === iBloq + 1,
+    `combate en ${iCombate}, barra en ${iBarra}, bloquear en ${iBloq}, poción en ${iPoc}`)
+  check('y entre medias solo está la barra, que es donde viven los dos',
+    iBarra === iCombate + 1 && iBloq === iBarra + 1,
+    `combate ${iCombate} · barra ${iBarra} · bloquear ${iBloq}`)
 
   console.log('\n── Y SE MARCAN AL HACERLAS DE VERDAD ──')
   // Contra un troll, que anuncia golpes: se bloquea hasta que uno entre.

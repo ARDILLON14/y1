@@ -204,6 +204,18 @@ class WorldScene extends Phaser.Scene {
                     frameRate: 6, repeat: -1,
                   })
                 }
+                // pixelArt: true pone filtro NEAREST en TODAS las
+                // texturas, y esta tira no es pixel art: la Zarigüeya
+                // está pintada a mano con bordes suaves y se dibuja a
+                // 0,62 de su tamaño. Reducir con NEAREST una ilustración
+                // pintada la deja con los bordes dentados. Quien traiga
+                // una tira de pixel art de verdad pone pixelArt: true en
+                // su ficha y se queda con NEAREST, que es lo que quiere.
+                try {
+                  if (!walk.pixelArt) {
+                    this.textures.get('skin_walk').setFilter(Phaser.Textures.FilterMode.LINEAR)
+                  }
+                } catch (e) { /* si no se puede, se queda como esté */ }
                 this.playerSprite = this.add.sprite(this.px, this.py, 'skin_walk')
                   .setOrigin(0.5).setDepth(10).setScale(0.62)
                 this.playerText.setVisible(false)

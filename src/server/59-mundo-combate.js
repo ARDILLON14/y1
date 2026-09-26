@@ -305,12 +305,18 @@ function pasoJugador(zona, j, ahora) {
   // Dónde NO se pelea en el mundo (sección C.4). Estar en dos combates a
   // la vez no es una posibilidad: es un jugador repartiendo el doble de
   // daño y recibiendo la mitad de atención.
-  if (char.hp <= 0) return
-  if (peleandoEnOtroSitio(j.usuario, char)) return
-  if (ahora < v.proxGolpe) return
+  //
+  // Cada rechazo se cuenta CON SU MOTIVO (sección F). Saber que se
+  // rechazaron mil golpes no sirve de nada; saber que novecientos eran
+  // por ranura vacía dice que la barra no se entiende.
+  if (char.hp <= 0) return rechazo(j.usuario, 'muerto')
+  if (peleandoEnOtroSitio(j.usuario, char)) return rechazo(j.usuario, 'en_otro_combate')
+  if (ahora < v.proxGolpe) return   // cadencia: no es un rechazo, es el ritmo
 
   const ranura = ranuraActivaDe(char)
-  if (ranura.vacia || ranura.agotada || !ranura.usableEnCombate) return
+  if (ranura.vacia) return rechazo(j.usuario, 'ranura_vacia')
+  if (ranura.agotada) return rechazo(j.usuario, 'sin_existencias')
+  if (!ranura.usableEnCombate) return rechazo(j.usuario, 'no_se_usa_peleando')
 
   // Una poción en la ranura activa se BEBE con el mismo botón.
   if (ranura.clase === 'consumible') { beberDeLaBarra(j, v, ranura, ahora); return }
@@ -321,7 +327,7 @@ function pasoJugador(zona, j, ahora) {
   const usar = ARMAS[ranura.itemId] ? perfilDeArma(ranura.itemId) : arma
   if (usar.costeMp > 0 && char.mp < usar.costeMp) {
     avisar(j.usuario, { tipo: 'sin_mana', costeMp: usar.costeMp })
-    return
+    return rechazo(j.usuario, 'sin_mana')
   }
 
   const f = fasesDeGolpe(usar.cadenciaMs)
@@ -397,6 +403,12 @@ function resolverGolpeMundo(zona, j, v, ahora) {
     g.avisado = true
     avisarZona(zona, { tipo: 'golpe', de: j.usuario, acierto: tocado, x: j.x, y: j.y, dir: g.dir, alcance: arma.alcance })
   }
+}
+
+// Un golpe que no sale, y por qué. Va a la telemetría como un suceso
+// por motivo, así que en el panel se ve la lista y no un total.
+function rechazo(username, motivo) {
+  if (typeof track === 'function') track('mundo_golpe_rechazado_' + motivo, username)
 }
 
 // ¿Está peleando en otro sitio? Batalla por turnos abierta, partida de

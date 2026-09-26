@@ -21,6 +21,7 @@
  */
 const fs = require('fs')
 const path = require('path')
+const zlib = require('zlib')
 
 const RAIZ = __dirname
 const ASSETS = process.env.ASSETS_DIR || path.join(RAIZ, 'assets')
@@ -32,6 +33,11 @@ const SRC = path.join(RAIZ, 'src', 'server')
 //   0 gris · 2 RGB · 3 paleta · 4 gris+alfa · 6 RGBA
 // Los tipos 4 y 6 traen canal alfa. El 3 (paleta) solo es transparente
 // si además lleva un bloque tRNS, así que hay que buscarlo.
+// Los dibujos de objeto son cuadrados de este tamaño. No es una
+// convención inventada: es lo que miden las tres espadas que hay y lo
+// que dice docs/GUIA_PIXEL_ART_ARMAS.md.
+const TAMANO_OBJETO = 32
+
 const TIPOS_PNG = { 0: 'gris', 2: 'RGB', 3: 'paleta', 4: 'gris+alfa', 6: 'RGBA' }
 function medirPng(ruta) {
   try {
@@ -44,6 +50,89 @@ function medirPng(ruta) {
       tipo, tipoNombre: TIPOS_PNG[tipo] || '?', alfa,
     }
   } catch { return null }
+}
+
+// ── Leer los píxeles de un PNG, sin librerías ──────────────────────
+//
+// medirPng() se queda en la cabecera y con eso basta para las medidas.
+// Para los avisos que pide la FASE G —píxeles semitransparentes, y si
+// la empuñadura cae sobre un hueco— hace falta el canal alfa de verdad,
+// o sea descomprimir e invertir el filtrado de cada línea.
+//
+// Es menos de lo que parece: zlib viene con Node, el filtrado son cinco
+// casos y solo hace falta el alfa. Solo se lee lo que tiene alfa de 8
+// bits (tipos 4 y 6); lo demás se devuelve sin alfa y quien llame se
+// abstiene de opinar, que es mejor que inventarse un dato.
+function alfaPng(ruta) {
+  try {
+    const buf = fs.readFileSync(ruta)
+    if (buf.length < 26 || buf.readUInt32BE(0) !== 0x89504e47) return null
+    const ancho = buf.readUInt32BE(16), alto = buf.readUInt32BE(20)
+    const prof = buf[24], tipo = buf[25]
+    if (prof !== 8) return null
+    const canales = tipo === 6 ? 4 : tipo === 4 ? 2 : 0
+    if (!canales) return null
+
+    // Juntar los IDAT, que pueden venir partidos en varios trozos.
+    const trozos = []
+    let i = 8
+    while (i + 8 <= buf.length) {
+      const largo = buf.readUInt32BE(i)
+      const clase = buf.toString('ascii', i + 4, i + 8)
+      if (clase === 'IDAT') trozos.push(buf.subarray(i + 8, i + 8 + largo))
+      if (clase === 'IEND') break
+      i += 12 + largo
+    }
+    if (!trozos.length) return null
+    const crudo = zlib.inflateSync(Buffer.concat(trozos))
+
+    // Deshacer el filtrado línea a línea. Cada línea empieza con un byte
+    // que dice con qué filtro se guardó.
+    const bpp = canales
+    const anchoLinea = ancho * bpp
+    const alfa = new Uint8Array(ancho * alto)
+    const anterior = Buffer.alloc(anchoLinea)
+    let actual = Buffer.alloc(anchoLinea)
+    let pos = 0
+    for (let y = 0; y < alto; y++) {
+      if (pos >= crudo.length) return null
+      const filtro = crudo[pos++]
+      crudo.copy(actual, 0, pos, pos + anchoLinea)
+      pos += anchoLinea
+      for (let x = 0; x < anchoLinea; x++) {
+        const a = x >= bpp ? actual[x - bpp] : 0
+        const b = anterior[x]
+        const c = x >= bpp ? anterior[x - bpp] : 0
+        let v = actual[x]
+        if (filtro === 1) v += a
+        else if (filtro === 2) v += b
+        else if (filtro === 3) v += (a + b) >> 1
+        else if (filtro === 4) {
+          const p = a + b - c
+          const pa = Math.abs(p - a), pb = Math.abs(p - b), pc = Math.abs(p - c)
+          v += (pa <= pb && pa <= pc) ? a : (pb <= pc ? b : c)
+        }
+        actual[x] = v & 0xff
+      }
+      for (let x = 0; x < ancho; x++) alfa[y * ancho + x] = actual[x * bpp + (bpp - 1)]
+      actual.copy(anterior)
+      actual = Buffer.alloc(anchoLinea)
+    }
+    return { ancho, alto, alfa }
+  } catch { return null }
+}
+
+// La ficha del artista: assets/items/<id>.json, al lado del dibujo.
+// Gana sobre lo que diga el catálogo, que gana sobre el valor por
+// defecto, para que quien dibuja no tenga que tocar código.
+function fichaDe(id) {
+  const ruta = path.join(ASSETS, 'items', id + '.json')
+  if (!fs.existsSync(ruta)) return { hay: false }
+  try {
+    return { hay: true, datos: JSON.parse(fs.readFileSync(ruta, 'utf8')) }
+  } catch (e) {
+    return { hay: true, rota: String(e.message) }
+  }
 }
 
 function fuente(archivo) {
@@ -127,9 +216,11 @@ function revisarAnclajes() {
   for (const f of fichasDe(fuente('30-personajes-combate.js'))) {
     const img = /imagen: '([^']+)'/.exec(f.cuerpo)
     if (!img) continue
+    const e = /empunadura:\s*\{\s*x:\s*([\d.]+)\s*,\s*y:\s*([\d.]+)/.exec(f.cuerpo)
     out.push({
       id: f.id, imagen: img[1],
       empunadura: /empunadura:/.test(f.cuerpo),
+      empunaduraDeclarada: e ? [Number(e[1]), Number(e[2])] : null,
       angulo: /spriteAngulo:/.test(f.cuerpo),
     })
   }
@@ -146,8 +237,19 @@ function revisar() {
   for (const o of conImagen) {
     const ruta = path.join(ASSETS, o.imagen.replace(/^\/assets\//, ''))
     const m = medirPng(ruta)
-    if (!m) rotos.push({ qué: `objeto ${o.id}`, archivo: o.imagen, problema: 'declarado y no existe, o no es un PNG' })
-    else hay.push({ qué: `objeto ${o.id}`, archivo: o.imagen, medidas: `${m.ancho}×${m.alto}` })
+    if (!m) { rotos.push({ qué: `objeto ${o.id}`, archivo: o.imagen, problema: 'declarado y no existe, o no es un PNG' }); continue }
+    // La medida. Los dibujos de objeto son de 32×32 y el juego los
+    // escala desde ahí: uno de 20×20 se ve borroso y descolocado, y
+    // hasta la FASE G no lo miraba nadie. Es lo primero que pide la
+    // lista de avisos de esa fase y era el único que faltaba.
+    if (m.ancho !== TAMANO_OBJETO || m.alto !== TAMANO_OBJETO) {
+      rotos.push({
+        qué: `objeto ${o.id}`, archivo: o.imagen,
+        problema: `mide ${m.ancho}×${m.alto} y los dibujos de objeto son de ${TAMANO_OBJETO}×${TAMANO_OBJETO}`,
+      })
+      continue
+    }
+    hay.push({ qué: `objeto ${o.id}`, archivo: o.imagen, medidas: `${m.ancho}×${m.alto}` })
   }
   const sinImagen = objetos.filter(o => !o.imagen)
   for (const o of sinImagen) {
@@ -224,6 +326,82 @@ function revisar() {
         qué: x.qué, archivo: x.archivo,
         problema: `es ${m.tipoNombre} y no trae transparencia: se pintará con su fondo`,
       })
+      continue
+    }
+
+    // 4b. Píxeles a medio camino. Un borde con alfa 120 se ve como un
+    // halo gris alrededor del dibujo cuando el juego lo escala con
+    // filtro NEAREST. En pixel art un píxel está o no está.
+    //
+    // SOLO en lo que es pixel art, o sea los objetos de assets/items.
+    // Las ilustraciones de personaje (assets/skins) están PINTADAS a
+    // 587×500 con bordes suaves: ahí el medio alfa es correcto y
+    // avisarlo sería dar por roto lo que está bien. La primera versión
+    // de esto las marcaba las cuatro.
+    if (!/^\/?assets\/items\//.test(x.archivo)) continue
+    const px = alfaPng(abs)
+    if (!px) continue
+    let medios = 0
+    for (let i = 0; i < px.alfa.length; i++) {
+      const a = px.alfa[i]
+      if (a > 0 && a < 255) medios++
+    }
+    if (medios > px.alfa.length * 0.02) {
+      rotos.push({
+        qué: x.qué, archivo: x.archivo,
+        problema: `${medios} píxeles a medio transparente (${(medios / px.alfa.length * 100).toFixed(1)} %): con filtro NEAREST se ven como un halo`,
+      })
+    }
+  }
+
+  // 5. La ficha del artista y la empuñadura.
+  for (const a of revisarAnclajes()) {
+    const f = fichaDe(a.id)
+    if (f.rota) {
+      rotos.push({
+        qué: `arma ${a.id} · ficha`, archivo: `assets/items/${a.id}.json`,
+        problema: `no se puede leer: ${f.rota}`,
+      })
+      continue
+    }
+    // Dónde agarra la mano: la ficha manda, luego el catálogo, luego el
+    // valor por defecto. Es el orden que pide la FASE G.
+    const emp = (f.datos && f.datos.empunadura) || a.empunaduraDeclarada || [0.79, 0.79]
+    const ex = Array.isArray(emp) ? emp[0] : emp.x
+    const ey = Array.isArray(emp) ? emp[1] : emp.y
+    if (!(ex >= 0 && ex <= 1 && ey >= 0 && ey <= 1)) {
+      rotos.push({
+        qué: `arma ${a.id} · empuñadura`, archivo: `assets/items/${a.id}.json`,
+        problema: `está en (${ex}, ${ey}) y tiene que ir entre 0 y 1: es una fracción del dibujo, no píxeles`,
+      })
+      continue
+    }
+    const abs = path.join(RAIZ, a.imagen.replace(/^\//, ''))
+    const px = alfaPng(abs)
+    if (!px) continue
+    const cx = Math.min(px.ancho - 1, Math.max(0, Math.round(ex * px.ancho)))
+    const cy = Math.min(px.alto - 1, Math.max(0, Math.round(ey * px.alto)))
+    if (px.alfa[cy * px.ancho + cx] === 0) {
+      rotos.push({
+        qué: `arma ${a.id} · empuñadura`, archivo: a.imagen,
+        problema: `la mano agarra el píxel (${cx}, ${cy}) y ahí no hay dibujo: el arma saldrá flotando`,
+      })
+    }
+  }
+
+  // 6. Una tira de golpe sin dibujo base. El gesto se pinta encima del
+  // arma; sin arma, la tira no se ve en ninguna parte.
+  const dirAnim2 = path.join(ASSETS, 'items', 'anim')
+  if (fs.existsSync(dirAnim2)) {
+    for (const f of fs.readdirSync(dirAnim2).filter(x => x.endsWith('.png'))) {
+      const id = f.replace(/\.png$/, '')
+      const t = (typeof id === 'string') && objetos.find(o => o.id === id)
+      if (t && !t.imagen) {
+        rotos.push({
+          qué: `arma ${id} · tira sin dibujo`, archivo: `assets/items/anim/${f}`,
+          problema: 'hay animación de golpe pero el arma no declara `imagen`: la tira no se pinta en ningún sitio',
+        })
+      }
     }
   }
 

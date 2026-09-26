@@ -4,6 +4,44 @@ Cada versión con lo que la motivó. Los detalles completos están en `docs/CAMB
 
 ## v33 (en curso) — Combate estilo Terraria y barra de objetos
 
+### El tutorial enseña la barra antes de pedirte que bebas
+
+Hay un paso nuevo, justo antes de los de bloquear y beber: elegir un arma
+con las teclas 1 a 0. No es relleno. La barra es donde viven la poción y
+el arma, así que enseñar a beber en mitad de una pelea sin haber enseñado
+dónde está la poción era enseñarlo al revés.
+
+Y los textos de los otros dos ya nombran los dos sitios donde se pelea,
+porque ahora son dos: en el mundo se bloquea con el clic derecho y en el
+combate por turnos con su botón. Decir solo uno dejaba a la mitad de la
+gente buscando un botón que en su pantalla no estaba.
+
+### Quien dibuje un arma ya no tiene que tocar código
+
+Hay una guía, `docs/GUIA_PIXEL_ART_ARMAS.md`, y un archivo de ajustes por
+arma: dónde agarra la mano, a qué ángulo viene la hoja y a qué escala. Lo
+que diga ese archivo gana sobre lo que diga el código.
+
+`npm run arte` avisa ahora de cuatro cosas más, y dos de ellas necesitan
+mirar los píxeles de verdad: si el dibujo tiene bordes a medio
+transparentes —que con el filtro nuevo se ven como un halo— y si la mano
+está agarrando un hueco, que es como un arma acaba flotando al lado del
+personaje. Y `npm run arte:ver` enseña cada arma en la mano de alguien,
+repitiendo su golpe, con un punto rojo donde agarra.
+
+De paso quedó contestada una pregunta que estaba abierta: las tres
+espadas usan la empuñadura por defecto y en las tres cae sobre dibujo.
+No hay que tocarlas.
+
+### Y un efecto secundario de poner el modo pixel art
+
+Al activarlo, el filtro NEAREST se aplica a todas las texturas, y la
+animación de la Zarigüeya no es pixel art: está pintada con bordes suaves
+y se dibuja más pequeña de lo que mide. Reducir una ilustración pintada
+con ese filtro la deja dentada. Lo encontró el aviso nuevo de píxeles a
+medias. Esa textura vuelve al filtro suave; las de pixel art se quedan
+como están.
+
 ### El combate en tiempo real, por fin visible
 
 Los monstruos del servidor ya se ven, se les pega apuntando con el ratón,

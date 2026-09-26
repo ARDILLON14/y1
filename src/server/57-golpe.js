@@ -206,6 +206,40 @@ function anguloEntre(a, b) {
   return Math.abs(((a - b + Math.PI * 3) % (Math.PI * 2)) - Math.PI)
 }
 
+// ── La ficha del artista ───────────────────────────────────────────
+//
+// assets/items/<id>.json, al lado del dibujo. Puede traer empunadura,
+// spriteAngulo y escala, y GANA sobre lo que diga el catálogo, que gana
+// sobre el valor por defecto. Es la sección G del encargo, y su razón
+// es concreta: quien dibuja tiene que poder ajustar dónde agarra la
+// mano sin abrir un archivo de código ni pedírselo a nadie.
+//
+// Se lee una vez por arma y se recuerda. Un JSON roto no puede tumbar
+// el juego: se ignora y se sigue con lo que hubiera.
+const FICHAS_ARMA = new Map()
+function fichaDeArma(id) {
+  if (FICHAS_ARMA.has(id)) return FICHAS_ARMA.get(id)
+  let f = null
+  try {
+    const ruta = path.join(ASSETS_DIR, 'items', id + '.json')
+    if (fs.existsSync(ruta)) {
+      const d = JSON.parse(fs.readFileSync(ruta, 'utf8'))
+      f = {}
+      if (Array.isArray(d.empunadura) && d.empunadura.length === 2) {
+        const x = Number(d.empunadura[0]), y = Number(d.empunadura[1])
+        if (x >= 0 && x <= 1 && y >= 0 && y <= 1) f.empunadura = { x, y }
+      }
+      if (Number.isFinite(Number(d.spriteAngulo))) f.spriteAngulo = Number(d.spriteAngulo)
+      if (Number.isFinite(Number(d.escala)) && Number(d.escala) > 0) f.escala = Number(d.escala)
+    }
+  } catch (e) {
+    console.warn('[arte] ' + id + '.json no se puede leer (' + e.message + '); se usa el catálogo')
+    f = null
+  }
+  FICHAS_ARMA.set(id, f)
+  return f
+}
+
 // ── Un golpe, un impacto por objetivo ──────────────────────────────
 //
 // La ventana activa dura hasta 160 ms y el paso son 100, así que un

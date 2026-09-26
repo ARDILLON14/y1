@@ -3080,6 +3080,18 @@ class WorldScene extends Phaser.Scene {
                     frameRate: 6, repeat: -1,
                   })
                 }
+                // pixelArt: true pone filtro NEAREST en TODAS las
+                // texturas, y esta tira no es pixel art: la Zarigüeya
+                // está pintada a mano con bordes suaves y se dibuja a
+                // 0,62 de su tamaño. Reducir con NEAREST una ilustración
+                // pintada la deja con los bordes dentados. Quien traiga
+                // una tira de pixel art de verdad pone pixelArt: true en
+                // su ficha y se queda con NEAREST, que es lo que quiere.
+                try {
+                  if (!walk.pixelArt) {
+                    this.textures.get('skin_walk').setFilter(Phaser.Textures.FilterMode.LINEAR)
+                  }
+                } catch (e) { /* si no se puede, se queda como esté */ }
                 this.playerSprite = this.add.sprite(this.px, this.py, 'skin_walk')
                   .setOrigin(0.5).setDepth(10).setScale(0.62)
                 this.playerText.setVisible(false)
@@ -23808,8 +23820,16 @@ const PRIMEROS_PASOS = [
   // justo. El banco de balance lo mide: bloqueando el golpe anunciado y
   // bebiendo por debajo de un tercio no se pierde ni una pelea en todo
   // el juego. Sin saberlo, un nivel 1 muere cuatro veces antes del 3.
-  { id: 'p_bloquear', titulo: 'Bloquea un golpe anunciado', pista: 'Cuando el enemigo avise de un golpe fuerte, pulsa Bloquear 🛡️: encaja un tercio del daño en vez de todo.', modulo: 'combat', evento: 'first_block', oro: 120 },
-  { id: 'p_pocion', titulo: 'Bébete una poción peleando', pista: 'No hace falta esperar a morir: en combate, el botón 🧪 cura sin perder el turno de atacar.', modulo: 'combat', evento: 'first_potion', oro: 120 },
+  // Y antes de los dos, la barra: son las teclas con las que se bloquea
+  // y se bebe en el mundo en tiempo real, así que enseñar a bloquear sin
+  // haber enseñado dónde está la poción es enseñar al revés.
+  { id: 'p_barra', titulo: 'Elige tu arma con las teclas 1–0', pista: 'Abajo tienes la barra de objetos. Las teclas 1 a 0 la manejan, y la rueda del ratón también. La ranura que elijas es el arma que llevas puesta.', modulo: 'mundo2d', evento: 'first_hotbar_switch', oro: 120 },
+  // Los textos hablan de los dos sitios donde se pelea. En el mundo en
+  // tiempo real se bloquea con el clic derecho y se bebe con la tecla de
+  // la poción; en el combate por turnos, con sus botones. Decir solo uno
+  // dejaba al jugador buscando un botón que en su pantalla no está.
+  { id: 'p_bloquear', titulo: 'Bloquea un golpe anunciado', pista: 'Cuando el enemigo avise de un golpe fuerte, bloquea: en el mundo con el clic derecho (o el botón 🛡️ en el móvil), y en el combate por turnos con Bloquear. Encaja un tercio del daño en vez de todo.', modulo: 'combat', evento: 'first_block', oro: 120 },
+  { id: 'p_pocion', titulo: 'Bébete una poción peleando', pista: 'No hace falta esperar a morir. En el mundo, pon la poción en la barra y pulsa su tecla dos veces; en el combate por turnos, el botón 🧪. Cura sin perder el turno de atacar.', modulo: 'combat', evento: 'first_potion', oro: 120 },
   { id: 'p_mision', titulo: 'Acepta una misión', pista: 'En Misiones, habla con Lyria la Alquimista y acepta "Cosecha de Hierbas".', modulo: 'misiones', evento: 'first_quest_accept', oro: 100 },
   { id: 'p_taller', titulo: 'Fabrica algo en el taller', pista: 'En Taller, la Poción de Vida solo necesita hierbas y agua.', modulo: 'crafting', evento: 'first_craft', oro: 150 },
   { id: 'p_nivel2', titulo: 'Alcanza el nivel 2', pista: 'Un par de combates bastan.', modulo: 'combat', evento: 'level_2', oro: 150 },
@@ -25980,6 +26000,40 @@ function anguloEntre(a, b) {
   return Math.abs(((a - b + Math.PI * 3) % (Math.PI * 2)) - Math.PI)
 }
 
+// ── La ficha del artista ───────────────────────────────────────────
+//
+// assets/items/<id>.json, al lado del dibujo. Puede traer empunadura,
+// spriteAngulo y escala, y GANA sobre lo que diga el catálogo, que gana
+// sobre el valor por defecto. Es la sección G del encargo, y su razón
+// es concreta: quien dibuja tiene que poder ajustar dónde agarra la
+// mano sin abrir un archivo de código ni pedírselo a nadie.
+//
+// Se lee una vez por arma y se recuerda. Un JSON roto no puede tumbar
+// el juego: se ignora y se sigue con lo que hubiera.
+const FICHAS_ARMA = new Map()
+function fichaDeArma(id) {
+  if (FICHAS_ARMA.has(id)) return FICHAS_ARMA.get(id)
+  let f = null
+  try {
+    const ruta = path.join(ASSETS_DIR, 'items', id + '.json')
+    if (fs.existsSync(ruta)) {
+      const d = JSON.parse(fs.readFileSync(ruta, 'utf8'))
+      f = {}
+      if (Array.isArray(d.empunadura) && d.empunadura.length === 2) {
+        const x = Number(d.empunadura[0]), y = Number(d.empunadura[1])
+        if (x >= 0 && x <= 1 && y >= 0 && y <= 1) f.empunadura = { x, y }
+      }
+      if (Number.isFinite(Number(d.spriteAngulo))) f.spriteAngulo = Number(d.spriteAngulo)
+      if (Number.isFinite(Number(d.escala)) && Number(d.escala) > 0) f.escala = Number(d.escala)
+    }
+  } catch (e) {
+    console.warn('[arte] ' + id + '.json no se puede leer (' + e.message + '); se usa el catálogo')
+    f = null
+  }
+  FICHAS_ARMA.set(id, f)
+  return f
+}
+
 // ── Un golpe, un impacto por objetivo ──────────────────────────────
 //
 // La ventana activa dura hasta 160 ms y el paso son 100, así que un
@@ -26392,6 +26446,7 @@ function tiraDe(id) {
 function armaVista(id) {
   const base = ARMAS[id] || ARMAS['puños']
   const t = (typeof template === 'function' && template(id)) || null
+  const ficha = typeof fichaDeArma === 'function' ? fichaDeArma(id) : null
   return {
     id, ...base,
     nombre: (t && t.name) || base.nombre,
@@ -26401,11 +26456,14 @@ function armaVista(id) {
     // (8,8) y el pomo en (29,29), o sea -135°. El dibujante necesita
     // saberlo para girarlo bien; si un sprite futuro apunta a otro
     // lado, se declara aquí y no se toca el renderer.
-    spriteAngulo: t && t.spriteAngulo != null ? t.spriteAngulo : -2.356,
+    // La ficha del artista manda sobre el catálogo, y el catálogo sobre
+    // el valor por defecto (sección G del encargo de combate).
+    spriteAngulo: (ficha && ficha.spriteAngulo != null) ? ficha.spriteAngulo
+      : (t && t.spriteAngulo != null ? t.spriteAngulo : -2.356),
     // Dónde agarra la mano el dibujo, en fracción de su propio tamaño.
     // Sin esto el arma se dibujaba centrada y quedaba flotando medio
     // sprite por delante del personaje, como si la llevara a rastras.
-    empunadura: (t && t.empunadura) || { x: 0.79, y: 0.79 },
+    empunadura: (ficha && ficha.empunadura) || (t && t.empunadura) || { x: 0.79, y: 0.79 },
     tipo: base.proyectil ? 'ranged' : 'melee',
     // Cómo se mueve el arma al golpear. Un hacha no barre igual que una
     // lanza, y con un solo gesto para todas el arma equipada se nota en
@@ -28849,12 +28907,18 @@ function pasoJugador(zona, j, ahora) {
   // Dónde NO se pelea en el mundo (sección C.4). Estar en dos combates a
   // la vez no es una posibilidad: es un jugador repartiendo el doble de
   // daño y recibiendo la mitad de atención.
-  if (char.hp <= 0) return
-  if (peleandoEnOtroSitio(j.usuario, char)) return
-  if (ahora < v.proxGolpe) return
+  //
+  // Cada rechazo se cuenta CON SU MOTIVO (sección F). Saber que se
+  // rechazaron mil golpes no sirve de nada; saber que novecientos eran
+  // por ranura vacía dice que la barra no se entiende.
+  if (char.hp <= 0) return rechazo(j.usuario, 'muerto')
+  if (peleandoEnOtroSitio(j.usuario, char)) return rechazo(j.usuario, 'en_otro_combate')
+  if (ahora < v.proxGolpe) return   // cadencia: no es un rechazo, es el ritmo
 
   const ranura = ranuraActivaDe(char)
-  if (ranura.vacia || ranura.agotada || !ranura.usableEnCombate) return
+  if (ranura.vacia) return rechazo(j.usuario, 'ranura_vacia')
+  if (ranura.agotada) return rechazo(j.usuario, 'sin_existencias')
+  if (!ranura.usableEnCombate) return rechazo(j.usuario, 'no_se_usa_peleando')
 
   // Una poción en la ranura activa se BEBE con el mismo botón.
   if (ranura.clase === 'consumible') { beberDeLaBarra(j, v, ranura, ahora); return }
@@ -28865,7 +28929,7 @@ function pasoJugador(zona, j, ahora) {
   const usar = ARMAS[ranura.itemId] ? perfilDeArma(ranura.itemId) : arma
   if (usar.costeMp > 0 && char.mp < usar.costeMp) {
     avisar(j.usuario, { tipo: 'sin_mana', costeMp: usar.costeMp })
-    return
+    return rechazo(j.usuario, 'sin_mana')
   }
 
   const f = fasesDeGolpe(usar.cadenciaMs)
@@ -28941,6 +29005,12 @@ function resolverGolpeMundo(zona, j, v, ahora) {
     g.avisado = true
     avisarZona(zona, { tipo: 'golpe', de: j.usuario, acierto: tocado, x: j.x, y: j.y, dir: g.dir, alcance: arma.alcance })
   }
+}
+
+// Un golpe que no sale, y por qué. Va a la telemetría como un suceso
+// por motivo, así que en el panel se ve la lista y no un total.
+function rechazo(username, motivo) {
+  if (typeof track === 'function') track('mundo_golpe_rechazado_' + motivo, username)
 }
 
 // ¿Está peleando en otro sitio? Batalla por turnos abierta, partida de
