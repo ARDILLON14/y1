@@ -70,7 +70,7 @@ Lo que **no** es: no hay token desplegado ni NFTs. `$CGRID` es un saldo interno 
 
 ## Estado del proyecto
 
-**Hecho:** servidor con autoridad total, doce módulos de juego (con arena en tiempo real, recolección y huerto), creador de personaje con siete aspectos (uno animado), telemetría con embudo y retención, economía pública auditable, chat y presencia en tiempo real por WebSocket, copias de seguridad con recuperación automática, beta cerrada por invitación, interfaz y controles táctiles para móvil, recuperación ante caídas de red, y 1.489 comprobaciones automatizadas repartidas en 56 archivos de prueba.
+**Hecho:** servidor con autoridad total, doce módulos de juego (con arena en tiempo real, recolección y huerto), creador de personaje con siete aspectos (uno animado), telemetría con embudo y retención, economía pública auditable, chat y presencia en tiempo real por WebSocket, copias de seguridad con recuperación automática, beta cerrada por invitación, interfaz y controles táctiles para móvil, recuperación ante caídas de red, y 1.543 comprobaciones automatizadas repartidas en 57 archivos de prueba.
 
 **Pendiente:** PostgreSQL (las migraciones están escritas; medido, el JSON aguanta 300 jugadores simultáneos con 44 ms), guerras de gremio, integración on-chain.
 

@@ -8,8 +8,8 @@ La foto de partida está en `docs/AUDITORIA_V31.md` y no se reescribe: sirve
 para comparar. El relato largo de cada cambio, con el porqué, está en
 `CHANGELOG.md`.
 
-**Estado al cerrar:** 56 archivos de prueba · 1.489 comprobaciones · 0 fallos
-· ~196 s con `npm test`.
+**Estado al cerrar:** 57 archivos de prueba · 1.543 comprobaciones · 0 fallos
+· ~190 s con `npm test`.
 
 ---
 
@@ -859,6 +859,72 @@ del servidor cuadran con las de la página.
 **SIGUIENTE** · FASE D: la barra ya está unificada por debajo, así que
 queda su pantalla y los dos endpoints que faltan (`mover` y `asignar` por
 itemId).
+
+---
+
+## FASE D — La barra de objetos
+
+**ARCHIVOS TOCADOS** · `src/pages/criptomundo-mundo2d-hotbar.js` (nuevo),
+`src/server/59-barra.js`, `src/server/30-personajes-combate.js`,
+`src/server/60-http.js`, `build.js`, `run-tests.js`, `test-hotbar.js`
+(nuevo).
+
+**QUÉ SE ARREGLÓ** · la barra existía en el servidor desde el sistema de
+recolección y **nadie la pintaba**. Tenías el hacha y el pico en una
+barra de acceso rápido que no se veía y no se podía usar sin abrir el
+inventario. Es el mismo agujero que el STEP 2 encontró con los recursos:
+servidor hecho, pantalla ausente.
+
+**QUÉ SE AÑADIÓ**
+
+- **Servidor** · `/api/hotbar/asignar` (acepta uid o itemId),
+  `/api/hotbar/mover` y `/api/hotbar/elegir`. `seleccionar` sigue
+  existiendo como alias: es el nombre que usa el cliente de recolección
+  que ya funciona, y un alias cuesta una línea.
+- **La ranura activa con un arma ES el arma equipada.** No es cosmético:
+  `armaDe()` lee `char.equipment.weapon`, así que sin esto elegir la
+  ranura de la espada cambiaría el icono y no el daño — el mismo fallo
+  que el STEP 1 arregló en el mundo. Se reutiliza el equipar de
+  `/api/player/equip`, extraído a `equiparObjeto()`, porque dos sitios
+  poniéndose equipo con dos códigos distintos acaban en un personaje que
+  lleva un arma y tiene los números de otra. Elegir una ranura de poción
+  **no** te desnuda: lo que llevas puesto sigue puesto.
+- **Pantalla** · barra centrada abajo, 44 px por ranura (40 en móvil,
+  nunca menos: es un dedo), con número de tecla, cantidad si apila, velo
+  de enfriamiento que baja de arriba abajo, marco dorado en la activa y
+  el nombre del arma 1.200 ms al cambiar, en el color de su rareza.
+  Teclas 1–0, rueda del ratón con 150 ms de freno, clic, y en pantallas
+  de menos de 480 px cinco ranuras con un botón para pasar a las otras
+  cinco. Respeta `env(safe-area-inset-bottom)`.
+- **Función pura + aplicador**, como el paso de andar: `estadoHotbar()`
+  recibe lo que dijo el servidor y devuelve lo que hay que pintar, sin
+  tocar el DOM ni la red. Por eso se prueba sin navegador.
+
+**PRUEBAS AÑADIDAS** · `test-hotbar.js` (54), con lo que pide la sección
+7: asignar, mover, elegir; rechazo de ranura 10, −1, objeto ajeno y uid
+inventado; **persiste tras matar el proceso**; una partida guardada de
+antes con ocho uids se migra a diez; publicar en el mercado lo que hay en
+una ranura la deja en gris y recuperarlo la rellena; la ranura activa
+cambia las estadísticas; y la función pura ejecutada con basura de
+entrada.
+
+**PRUEBAS QUE PASAN** · 57 archivos · 1.543 comprobaciones · 0 fallos ·
+190 s.
+
+**UN FALLO MÍO EN LA PRUEBA** · la comprobación «ninguna ranura baja de
+40 px» buscaba `width: 3Xpx` a secas y pillaba el **icono** de 32 px, que
+va dentro de la ranura. Decía que la barra era pequeña mirando el dibujo
+en vez del botón. Ahora lee la regla de `.ranura`.
+
+**SE SABE Y NO SE ARREGLA AQUÍ**
+- Arrastrar del inventario a la barra, y entre ranuras, no está. El
+  encargo lo pide (D.2) y es la parte de la barra que más DOM necesita;
+  las teclas, la rueda y el clic cubren el uso real mientras tanto.
+- La barra se pinta en el mapa y no en las demás pantallas.
+
+**SIGUIENTE** · FASE E, que es la que hace que el combate de la FASE C se
+vea: el arma en la mano, el apuntado con el ratón, los números de daño y
+la interpolación.
 
 ---
 

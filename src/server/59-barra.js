@@ -181,13 +181,47 @@ function seleccionarRanura(char, ranura) {
   hotbarDe(char)
   const antes = char.hotbarSel || 0
   char.hotbarSel = ranura
-  // Cambiar a una ranura con arma es el paso del tutorial de la FASE F.
   const res = ranuraResuelta(char, ranura)
+
+  // LA RANURA ACTIVA CON UN ARMA *ES* EL ARMA EQUIPADA (sección D.1).
+  // No es un detalle de interfaz: armaDe() lee char.equipment.weapon, así
+  // que sin esto elegir la ranura de la espada cambiaría el icono y no el
+  // daño, que es exactamente el fallo que el STEP 1 arregló en el mundo.
+  //
+  // Si la ranura está vacía, o tiene algo que no es arma, el arma que
+  // llevas puesta SIGUE puesta: quedarse en calzoncillos por elegir la
+  // ranura de las pociones no lo espera nadie.
+  let equipo = null
+  if (res && res.arma && res.uid && !res.agotada) {
+    const r = equiparObjeto(char, res.uid)
+    if (!r.error) equipo = r
+  }
+
   if (antes !== ranura && res && res.arma && typeof step === 'function') {
     step(char.name, 'first_hotbar_switch')
   }
   persist()
-  return { success: true, seleccionada: ranura, hotbar: verHotbar(char) }
+  const fuera = { success: true, seleccionada: ranura, hotbar: verHotbar(char) }
+  if (equipo) { fuera.equipment = equipo.equipment; fuera.stats = equipo.stats; fuera.hp = equipo.hp; fuera.mp = equipo.mp }
+  return fuera
+}
+
+// ── Mover y asignar, que es lo que pide la sección D.1 ─────────────
+function moverEnHotbar(char, desde, hasta) {
+  if (!char) return { error: 'Sin personaje', code: 400 }
+  if (!ranuraValida(desde) || !ranuraValida(hasta)) {
+    return { error: 'Ranura inválida', code: 400 }
+  }
+  hotbarDe(char)
+  const t = char.hotbar[desde]
+  char.hotbar[desde] = char.hotbar[hasta]
+  char.hotbar[hasta] = t
+  // Mover puede cambiar lo que hay bajo la ranura activa, y con ello el
+  // arma equipada. Se vuelve a elegir la misma para que cuadren.
+  const sel = ranuraValida(char.hotbarSel) ? char.hotbarSel : 0
+  if (sel === desde || sel === hasta) return seleccionarRanura(char, sel)
+  persist()
+  return { success: true, hotbar: verHotbar(char) }
 }
 
 // ── Para el combate en tiempo real ─────────────────────────────────

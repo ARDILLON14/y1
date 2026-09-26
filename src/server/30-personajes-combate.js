@@ -500,6 +500,26 @@ function removeItem(char, itemId, quantity, motivo = 'otro') {
 function countItem(char, itemId) {
   return char.inventory.filter(i => i.itemId === itemId && !isEquipped(char, i.uid)).reduce((a, i) => a + i.quantity, 0)
 }
+// Ponerse una pieza. Estaba escrito dentro del endpoint /api/player/equip
+// y ahora lo necesita también la barra de objetos: elegir una ranura con
+// arma ES equipar esa arma (sección D.1 del encargo). Dos sitios
+// poniéndose equipo con dos códigos distintos es cómo se acaba con un
+// personaje que lleva puesta un arma y tiene los números de otra.
+//
+// ajustarATope() no sobra: cambiar una pieza por otra peor baja el tope
+// de vida, y sin recortar quedaba un personaje con 1.150 puntos de un
+// tope de 970.
+function equiparObjeto(char, uid) {
+  const item = (char.inventory || []).find(i => i && i.uid === uid)
+  if (!item) return { error: 'Objeto no encontrado en tu inventario', code: 404 }
+  const t = template(item.itemId)
+  if (!t || !t.slot) return { error: 'Ese objeto no es equipable', code: 400 }
+  char.equipment = char.equipment || {}
+  char.equipment[t.slot] = item.uid
+  const st = ajustarATope(char)
+  return { success: true, equipment: char.equipment, stats: st, hp: char.hp, mp: char.mp }
+}
+
 function isEquipped(char, uid) {
   return Object.values(char.equipment || {}).includes(uid)
 }

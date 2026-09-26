@@ -305,15 +305,10 @@ async function handleAPI(req, res, pathname, query) {
       persist()
       return json(res, { success: true, equipment: char.equipment, stats: st, hp: char.hp, mp: char.mp })
     }
-    const item = char.inventory.find(i => i.uid === uid)
-    if (!item) return fail(res, 'Objeto no encontrado en tu inventario', 404)
-    const t = template(item.itemId)
-    if (!t?.slot) return fail(res, 'Ese objeto no es equipable')
-    char.equipment[t.slot] = item.uid
-    // Cambiar una pieza por otra peor también puede bajar el tope.
-    const st = ajustarATope(char)
+    const r = equiparObjeto(char, uid)
+    if (r.error) return fail(res, r.error, r.code)
     persist()
-    return json(res, { success: true, equipment: char.equipment, stats: st, hp: char.hp, mp: char.mp })
+    return json(res, r)
   }
 
   // Usar un consumible fuera del combate. Antes solo se podía beber
@@ -673,8 +668,25 @@ async function handleAPI(req, res, pathname, query) {
     if (r.error) return fail(res, r.error, r.code)
     return json(res, r)
   }
-  if (pathname === '/api/hotbar/seleccionar' && req.method === 'POST') {
+  // `seleccionar` y `elegir` son la misma puerta: la primera es como se
+  // llamaba desde la recolección y la usa el cliente que ya existe; la
+  // segunda es el nombre que pide la sección D.1. Un alias cuesta una
+  // línea; romper el cliente que ya funciona, no.
+  if ((pathname === '/api/hotbar/seleccionar' || pathname === '/api/hotbar/elegir') && req.method === 'POST') {
     const r = seleccionarRanura(char, body.ranura)
+    if (r.error) return fail(res, r.error, r.code)
+    return json(res, r)
+  }
+  if (pathname === '/api/hotbar/asignar' && req.method === 'POST') {
+    // Acepta uid o itemId indistintamente: el cliente viejo manda uid y
+    // el encargo habla de "idObjeto".
+    const ref = body.idObjeto !== undefined ? body.idObjeto : body.uid
+    const r = ponerEnHotbar(char, body.ranura, ref === undefined ? null : ref)
+    if (r.error) return fail(res, r.error, r.code)
+    return json(res, r)
+  }
+  if (pathname === '/api/hotbar/mover' && req.method === 'POST') {
+    const r = moverEnHotbar(char, body.desde, body.hasta)
     if (r.error) return fail(res, r.error, r.code)
     return json(res, r)
   }

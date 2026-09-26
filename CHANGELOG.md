@@ -4,6 +4,18 @@ Cada versión con lo que la motivó. Los detalles completos están en `docs/CAMB
 
 ## v33 (en curso) — Combate estilo Terraria y barra de objetos
 
+### La barra de objetos, por fin en pantalla
+
+Existía en el servidor desde el sistema de recolección y no la pintaba
+nadie: tenías el hacha y el pico en una barra de acceso rápido que no se
+veía y que no se podía usar sin abrir el inventario.
+
+Ahora está abajo, centrada, con las teclas 1–0, la rueda del ratón y el
+dedo. Y elegir una ranura con arma **equipa esa arma**: si no, cambiaría
+el icono y no el daño, que es justo el fallo que hubo que arreglar en el
+mundo 2D hace veinte pasos. Elegir la ranura de las pociones, en cambio,
+no te desnuda.
+
 ### Los monstruos del mapa ya son del servidor, y los mismos para todos
 
 Hasta ahora los inventaba el navegador. Cada jugador colocaba los suyos
