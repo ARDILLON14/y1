@@ -8,8 +8,8 @@ La foto de partida está en `docs/AUDITORIA_V31.md` y no se reescribe: sirve
 para comparar. El relato largo de cada cambio, con el porqué, está en
 `CHANGELOG.md`.
 
-**Estado al cerrar:** 57 archivos de prueba · 1.543 comprobaciones · 0 fallos
-· ~190 s con `npm test`.
+**Estado al cerrar:** 58 archivos de prueba · 1.602 comprobaciones · 0 fallos
+· ~186 s con `npm test`.
 
 ---
 
@@ -925,6 +925,88 @@ en vez del botón. Ahora lee la regla de `.ranura`.
 **SIGUIENTE** · FASE E, que es la que hace que el combate de la FASE C se
 vea: el arma en la mano, el apuntado con el ratón, los números de daño y
 la interpolación.
+
+---
+
+## FASE E — Que el combate se vea
+
+**ARCHIVOS TOCADOS** · `src/pages/criptomundo-mundo2d-golpe.js`,
+`criptomundo-mundo2d-numeros.js`, `criptomundo-mundo2d-combate.js` (los
+tres nuevos), `criptomundo-mundo2d-2.js`, `criptomundo-mundo2d-hotbar.js`,
+`src/server/60-http.js`, `build.js`, `aplicar-css-movil.js`,
+`test-golpe-pose.js` (nuevo), `test-paginas.js`, `run-tests.js`.
+
+**QUÉ SE ARREGLÓ** · la FASE C puso los monstruos en el servidor y
+**nadie los dibujaba**. El mapa seguía inventando los suyos en el
+navegador y abriendo batallas por turnos al tocarlos: dos mundos a la
+vez, y el bueno invisible.
+
+**QUÉ SE AÑADIÓ**
+
+- **Dos funciones puras**, como el paso de andar. `poseArma()` dice dónde
+  va el arma en cada instante del golpe; `numeroFlotante()`, dónde va un
+  número de daño y con qué transparencia. Ninguna toca el DOM ni la red,
+  y por eso se prueban sin navegador.
+- **La predicción visual**, que no es un adorno: medido en la FASE A, de
+  pulsar a ver el gesto pasan 98 ms si se espera al servidor, y eso se
+  siente como un botón roto. El gesto arranca en local; **el daño, el
+  número y el destello NO**: esos solo se pintan cuando llega el suceso
+  del servidor. Si el servidor rechaza el golpe, el arma vuelve a reposo
+  y no ha pasado nada.
+- **Apuntado** con el ratón (el personaje se voltea hacia el cursor
+  aunque camine al revés), clic derecho para bloquear con el menú del
+  navegador desactivado, y en táctil el monstruo vivo más cercano dentro
+  de vez y media el alcance.
+- **Interpolación** de monstruos y proyectiles con un paso de retraso,
+  destello blanco de 80 ms, barra de vida solo cuando no está entera,
+  aviso de golpe que agranda al bicho, y temblor de cámara de 2 px que
+  se apaga solo si el sistema pide menos movimiento.
+- **`pixelArt: true` y `roundPixels: true`** (FASE E.5), compatibles con
+  el `Phaser.AUTO` que tiene 9× de motivo medido para quedarse.
+- **El mundo de mentira se apaga donde el servidor simula.** Si una zona
+  devuelve monstruos del servidor, el navegador deja de poner los suyos y
+  de abrir batallas por turnos ahí. Donde el servidor no simula —el
+  pueblo, la cripta, el castillo— todo sigue igual. Es el interruptor que
+  la decisión D9 pedía hacer aparte, y se hace solo.
+
+**PRUEBAS AÑADIDAS** · `test-golpe-pose.js` (59): reposo es exactamente
+reposo, la espada recorre su arco entero sin salirse, no hay salto entre
+fases, voltear no cambia el lado del filo, ninguna combinación de basura
+saca un NaN, y a los 700 ms el número tiene alfa **cero**.
+
+**PRUEBAS QUE PASAN** · 58 archivos · 1.602 comprobaciones · 0 fallos ·
+186 s.
+
+**DOS HERRAMIENTAS DEL PROYECTO QUE ESTABAN ROTAS Y NADIE LO SABÍA**
+
+Las dos las destapó esta fase, y las dos fallaban en silencio:
+
+- `aplicar-css-movil.js` decidía si un archivo era continuación de una
+  página mirando **los primeros 400 caracteres**. El módulo de la barra
+  explica en 40 líneas por qué existe antes de tocar `PAGES`, así que su
+  `+=` caía fuera de la ventana: la herramienta lo tomó por una página
+  nueva y metió **una segunda copia** del bloque móvil en la misma
+  página. Ahora busca la primera asignación a `PAGES`, esté donde esté.
+- `test-paginas` comprobaba que ninguna pantalla llamara a una ruta
+  inexistente, y su escape para rutas con id (`/api/market/<id>/buy`)
+  componía un patrón con `/api` dos veces: **no casaba nunca**. Pasaba de
+  casualidad porque esas rutas tenían además una versión literal. La
+  primera que no la tuvo —`/api/armas/<id>`— lo destapó. Arreglado y
+  comprobado con una ruta inventada a propósito.
+
+**SE SABE Y NO SE ARREGLA AQUÍ**
+- El arma en la mano se dibuja con su **emoji**, no con su PNG y su
+  empuñadura. El perfil ya viaja al cliente (`/api/armas/<id>` trae
+  `empunadura` y `spriteAngulo`); falta cargar la textura y pintarla con
+  origen en la empuñadura, que es lo que hace la arena. Con tres espadas
+  dibujadas y ninguna declarando su empuñadura (decisión D8), pintarlas
+  hoy saldría peor que el emoji.
+- La tira `golpe.png` por arma no se reproduce: no hay ninguna (77
+  archivos de arte pendientes).
+- Sin sonido: `audio: { noAudio: true }`, como dijo la auditoría.
+
+**SIGUIENTE** · FASE F (tutorial y telemetría) y FASE G (la convención de
+arte y `npm run arte:ver`).
 
 ---
 

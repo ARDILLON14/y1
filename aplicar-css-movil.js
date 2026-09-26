@@ -150,9 +150,22 @@ let tocados = 0, saltados = 0
 // su `</body>`, y la siguiente pasada lo duplicaría en la otra mitad.
 const ARCHIVOS = fs.readdirSync(DIR).filter(f => f.endsWith('.js'))
 
-// Un archivo de continuación empieza con `PAGES['x'] += ` : es la
-// segunda mitad de una página ya inyectada, no una página nueva.
-const esContinuacion = txt => /^\s*PAGES\[[^\]]+\]\s*\+=/m.test(txt.slice(0, 400))
+// Un archivo de continuación asigna con `+=`: es la segunda mitad de
+// una página ya inyectada, no una página nueva.
+//
+// Antes esto solo miraba los primeros 400 caracteres, y ahí cabe una
+// cabecera de comentarios normalita. criptomundo-mundo2d-hotbar.js
+// explica en 40 líneas por qué existe la barra ANTES de tocar PAGES, así
+// que su `+=` caía fuera de la ventana: la herramienta lo tomó por una
+// página nueva y le metió una segunda copia del bloque móvil en la misma
+// página. Lo cazó test-movil con "el bloque no está duplicado".
+//
+// Ahora se busca la PRIMERA asignación a PAGES, esté donde esté, y se
+// mira si es `=` o `+=`. Sin ventana que se pueda quedar corta.
+const esContinuacion = txt => {
+  const m = /PAGES\[[^\]]+\]\s*(\+?=)/.exec(txt)
+  return !!m && m[1] === '+='
+}
 
 for (const file of ARCHIVOS) {
   const p = path.join(DIR, file)

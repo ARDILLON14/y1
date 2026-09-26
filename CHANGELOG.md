@@ -4,6 +4,33 @@ Cada versión con lo que la motivó. Los detalles completos están en `docs/CAMB
 
 ## v33 (en curso) — Combate estilo Terraria y barra de objetos
 
+### El combate en tiempo real, por fin visible
+
+Los monstruos del servidor ya se ven, se les pega apuntando con el ratón,
+salen números de daño, el enemigo destella al encajar y la cámara tiembla
+dos píxeles cuando te dan. Y donde el servidor simula la zona, el
+navegador deja de inventarse sus propios monstruos: se acabaron los dos
+mundos a la vez.
+
+La animación del golpe arranca al pulsar, sin esperar respuesta. No es
+pereza: medido, esperar al servidor son 98 milisegundos en los que no
+pasa nada, y eso se siente como un botón que no funciona. El daño, en
+cambio, no se predice nunca: ese se pinta cuando el servidor dice que ha
+ocurrido.
+
+### Dos herramientas del proyecto estaban rotas y nadie lo sabía
+
+La que reparte el CSS móvil decidía si un archivo era continuación de una
+página mirando sus primeros 400 caracteres. Un módulo que explica en
+cuarenta líneas por qué existe antes de tocar nada se salía de esa
+ventana, y acababa con dos copias del mismo bloque en la misma página.
+
+Y la que comprueba que ninguna pantalla llame a una ruta inexistente
+tenía el escape de las rutas con identificador mal escrito: componía el
+patrón con `/api` dos veces, así que no casaba nunca. Llevaba pasando de
+casualidad, porque todas esas rutas tenían además una versión literal. La
+primera que no la tuvo lo destapó.
+
 ### La barra de objetos, por fin en pantalla
 
 Existía en el servidor desde el sistema de recolección y no la pintaba

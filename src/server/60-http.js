@@ -685,6 +685,22 @@ async function handleAPI(req, res, pathname, query) {
     if (r.error) return fail(res, r.error, r.code)
     return json(res, r)
   }
+  // El perfil de un arma, para que la pantalla sepa cómo dibujar el
+  // gesto: qué tipo es, cuánto barre, a qué distancia y a qué ritmo.
+  // Son datos de catálogo, no decisiones: el daño lo sigue calculando
+  // el servidor y esto no lo publica.
+  const armaMatch = pathname.match(/^\/api\/armas\/([a-z_0-9]+)$/)
+  if (armaMatch && req.method === 'GET') {
+    const p2 = perfilDeArma(armaMatch[1])
+    if (!p2) return fail(res, 'Arma desconocida', 404)
+    return json(res, { perfil: {
+      id: p2.id, tipoUso: p2.tipoUso, alcance: p2.alcance, arco: p2.arco,
+      arcoGrados: p2.arcoGrados, cadenciaMs: p2.cadenciaMs, gesto: p2.gesto,
+      empunadura: p2.empunadura, spriteAngulo: p2.spriteAngulo,
+      icono: p2.icono, imagen: p2.imagen, nombre: p2.nombre,
+      costeMp: p2.costeMp, autoGolpe: p2.autoGolpe,
+    } })
+  }
   if (pathname === '/api/hotbar/mover' && req.method === 'POST') {
     const r = moverEnHotbar(char, body.desde, body.hasta)
     if (r.error) return fail(res, r.error, r.code)

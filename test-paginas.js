@@ -214,10 +214,21 @@ async function run() {
   const usadas = [...new Set((fuentes.match(/\/api\/[a-zA-Z0-9/_-]*/g) || [])
     .map(s => s.replace(/\/$/, '')).filter(s => s.length > 5))]
   check('se encontraron rutas de API en las pantallas', usadas.length > 30, String(usadas.length))
+  // El escape para rutas con un id por medio (/api/market/<id>/buy)
+  // estaba mal escrito: componía un patrón con /api dos veces, así que
+  // no casaba nunca. Pasaba de casualidad, porque esas rutas tenían
+  // además una versión literal en el servidor. La primera ruta que no
+  // la tuvo —/api/armas/<id>, de la FASE E— lo destapó.
+  //
+  // Ahora se busca el texto de la expresión regular tal y como se
+  // escribe en el servidor: ^\/api\/<lo-que-sea>\/
   const huerfanas = usadas.filter(r => {
     if (servidor.includes(`'${r}'`)) return false
-    // Rutas con un id por medio: /api/market/<id>/buy y similares.
-    if (new RegExp(`\\^\\\\/api\\\\${r.split('/').slice(0, 3).join('\\\\/')}`).test(servidor)) return false
+    const trozos = r.split('/').filter(Boolean)          // ['api', 'armas', ...]
+    if (trozos.length >= 2) {
+      // Tal y como aparece en el código: /^\/api\/armas\/(...)
+      if (servidor.includes(`^\\/${trozos[0]}\\/${trozos[1]}\\/`)) return false
+    }
     const raiz = r.split('/').slice(0, 3).join('/')
     return !servidor.includes(`'${raiz}'`) && !servidor.includes(`startsWith('${raiz}`)
   })

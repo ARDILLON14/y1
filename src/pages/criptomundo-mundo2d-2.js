@@ -690,6 +690,13 @@ class WorldScene extends Phaser.Scene {
       this.playerText.setVisible(true)
     }
 
+    // El combate en tiempo real: dibuja lo del servidor y manda la
+    // intención. Va aquí y no en su propio temporizador para que la
+    // interpolación use el mismo delta que todo lo demás.
+    if (typeof mcActualizar === 'function') {
+      try { mcActualizar(this) } catch (e) { /* que no se lleve el bucle */ }
+    }
+
     // Footstep puffs
     if ((dx !== 0 || dy !== 0)) {
       this.footstepTimer += delta
@@ -828,6 +835,12 @@ class WorldScene extends Phaser.Scene {
   }
 
   triggerCombat(monsterData, monsterText, index) {
+    // Si el servidor simula esta zona, sus monstruos son los de verdad
+    // y se pelea con ellos en tiempo real. Abrir además una batalla por
+    // turnos contra un bicho de mentira sería pelear dos veces con dos
+    // reglas distintas. Donde el servidor NO simula —el pueblo, la
+    // cripta, el castillo— esto sigue exactamente igual que siempre.
+    if (typeof MC !== 'undefined' && MC && MC.activo) return
     if (activeCombat) return
     activeCombat = { ...monsterData, spriteText: monsterText, index }
 
@@ -1131,6 +1144,14 @@ const config = {
   // cuando hay GPU de verdad —que ahi si es mas rapido— y se pasa a
   // Canvas cuando no la hay, en vez de arrastrarse.
   type:   Phaser.AUTO,
+  // FASE E.5. El arte del juego es pixel art de 32x32 escalado: con el
+  // filtro lineal por defecto, una espada de 32 px pintada a 64 sale
+  // emborronada y se le van los bordes. pixelArt pone el filtro NEAREST
+  // en todas las texturas y roundPixels evita que un sprite caiga en
+  // medio pixel, que es lo que hace que un dibujo pequeno tiemble al
+  // andar. Los dos son compatibles con AUTO: no fuerzan WEBGL.
+  pixelArt: true,
+  roundPixels: true,
   width:  window.innerWidth,
   height: window.innerHeight,
   canvas: document.getElementById('phaser-canvas'),

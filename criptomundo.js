@@ -3566,6 +3566,13 @@ class WorldScene extends Phaser.Scene {
       this.playerText.setVisible(true)
     }
 
+    // El combate en tiempo real: dibuja lo del servidor y manda la
+    // intención. Va aquí y no en su propio temporizador para que la
+    // interpolación use el mismo delta que todo lo demás.
+    if (typeof mcActualizar === 'function') {
+      try { mcActualizar(this) } catch (e) { /* que no se lleve el bucle */ }
+    }
+
     // Footstep puffs
     if ((dx !== 0 || dy !== 0)) {
       this.footstepTimer += delta
@@ -3704,6 +3711,12 @@ class WorldScene extends Phaser.Scene {
   }
 
   triggerCombat(monsterData, monsterText, index) {
+    // Si el servidor simula esta zona, sus monstruos son los de verdad
+    // y se pelea con ellos en tiempo real. Abrir además una batalla por
+    // turnos contra un bicho de mentira sería pelear dos veces con dos
+    // reglas distintas. Donde el servidor NO simula —el pueblo, la
+    // cripta, el castillo— esto sigue exactamente igual que siempre.
+    if (typeof MC !== 'undefined' && MC && MC.activo) return
     if (activeCombat) return
     activeCombat = { ...monsterData, spriteText: monsterText, index }
 
@@ -4007,6 +4020,14 @@ const config = {
   // cuando hay GPU de verdad —que ahi si es mas rapido— y se pasa a
   // Canvas cuando no la hay, en vez de arrastrarse.
   type:   Phaser.AUTO,
+  // FASE E.5. El arte del juego es pixel art de 32x32 escalado: con el
+  // filtro lineal por defecto, una espada de 32 px pintada a 64 sale
+  // emborronada y se le van los bordes. pixelArt pone el filtro NEAREST
+  // en todas las texturas y roundPixels evita que un sprite caiga en
+  // medio pixel, que es lo que hace que un dibujo pequeno tiemble al
+  // andar. Los dos son compatibles con AUTO: no fuerzan WEBGL.
+  pixelArt: true,
+  roundPixels: true,
   width:  window.innerWidth,
   height: window.innerHeight,
   canvas: document.getElementById('phaser-canvas'),
@@ -5183,6 +5204,617 @@ window.addEventListener('beforeunload', function () {
 })
 </script>`
 
+// La pose del arma mientras golpeas.
+//
+// QUÉ RESUELVE
+// El servidor dice CUÁNDO empieza un golpe, cuánto dura su anticipación
+// y cuánto su parte activa (57-golpe.js). Lo que no dice —ni debe— es
+// dónde se dibuja el arma en cada instante. Eso es esto.
+//
+// Es una función PURA: se le da el tipo de arma, en qué fase va, cuánto
+// ha avanzado y hacia dónde apuntas, y devuelve cuatro números. No mira
+// el reloj, no toca el DOM y no pide nada. Por eso se prueba sin
+// navegador, igual que el paso de andar.
+//
+// LAS UNIDADES, OTRA VEZ
+// El ángulo que devuelve es RELATIVO a la dirección de apuntado y va en
+// radianes. Quien dibuja suma: apuntado + pose − spriteAngulo. Esa resta
+// del final es porque los PNG del juego llevan la hoja en diagonal y lo
+// declaran en su ficha (ver la decisión D8 de la auditoría).
+PAGES['criptomundo-mundo2d.html'] += `<script>
+
+// Reposo: el arma colgando, un poco hacia abajo y atrás.
+var POSE_REPOSO = { angulo: -0.52, offsetX: 0, offsetY: 0, escala: 1 }
+
+function poseReposo() { return { angulo: POSE_REPOSO.angulo, offsetX: 0, offsetY: 0, escala: 1 } }
+
+// tipoUso    'espada' | 'lanza' | 'arco' | 'magia'
+// fase       'anticipacion' | 'activa' | 'recuperacion' | otra cosa = reposo
+// progreso   0 a 1 dentro de esa fase
+// arco       semi-apertura del arma EN RADIANES (la misma que el servidor)
+function poseArma(tipoUso, fase, progreso, arco) {
+  var p = Number(progreso)
+  if (!isFinite(p)) p = 0
+  if (p < 0) p = 0
+  if (p > 1) p = 1
+  var a = Number(arco)
+  if (!isFinite(a) || a <= 0) a = 1.05
+  var t = String(tipoUso || 'espada')
+  var f = String(fase || 'reposo')
+  if (f !== 'anticipacion' && f !== 'activa' && f !== 'recuperacion') return poseReposo()
+
+  if (t === 'lanza') return poseLanza(f, p, a)
+  if (t === 'arco') return poseArco(f, p)
+  if (t === 'magia') return poseMagia(f, p)
+  return poseEspada(f, p, a)
+}
+
+// Espada: se echa atrás hasta pasarse del arco, barre de un extremo al
+// otro acelerando al principio, y vuelve a reposo.
+function poseEspada(f, p, arco) {
+  var medio = arco
+  if (f === 'anticipacion') {
+    return { angulo: -(medio + 0.35) * suave(p), offsetX: 0, offsetY: 0, escala: 1 }
+  }
+  if (f === 'activa') {
+    // Acelera al principio: el filo cruza rápido y frena al final, que
+    // es como se siente el peso de un barrido.
+    var k = 1 - (1 - p) * (1 - p)
+    return { angulo: -(medio + 0.35) + (2 * medio + 0.35) * k, offsetX: 0, offsetY: 0, escala: 1 }
+  }
+  return { angulo: medio * (1 - p) + POSE_REPOSO.angulo * p, offsetX: 0, offsetY: 0, escala: 1 }
+}
+
+// Lanza: no gira, sale disparada por el eje de puntería y vuelve.
+function poseLanza(f, p, arco) {
+  if (f === 'anticipacion') return { angulo: 0.10 * p, offsetX: -8 * p, offsetY: 0, escala: 1 }
+  if (f === 'activa') {
+    var k = Math.sqrt(p)
+    return { angulo: 0.10 - 0.10 * k, offsetX: -8 + 34 * k, offsetY: 0, escala: 1 }
+  }
+  return { angulo: 0, offsetX: 26 * (1 - p), offsetY: 0, escala: 1 }
+}
+
+// Arco: se tensa encogiéndose, suelta, y vuelve.
+function poseArco(f, p) {
+  if (f === 'anticipacion') return { angulo: 0, offsetX: -4 * p, offsetY: 0, escala: 1 - 0.1 * p }
+  if (f === 'activa') return { angulo: 0, offsetX: -4 + 6 * p, offsetY: 0, escala: 0.9 + 0.1 * p }
+  return { angulo: POSE_REPOSO.angulo * p, offsetX: 0, offsetY: 0, escala: 1 }
+}
+
+// Magia: el arma sube y brilla, destella, y baja.
+function poseMagia(f, p) {
+  if (f === 'anticipacion') return { angulo: -0.3 * p, offsetX: 0, offsetY: -4 * p, escala: 1 + 0.08 * p }
+  if (f === 'activa') return { angulo: -0.3, offsetX: 0, offsetY: -4, escala: 1.08 + 0.22 * p }
+  return { angulo: -0.3 * (1 - p) + POSE_REPOSO.angulo * p, offsetX: 0, offsetY: -4 * (1 - p), escala: 1.3 - 0.3 * p }
+}
+
+function suave(p) { return p * p * (3 - 2 * p) }
+
+// En qué fase va un golpe, según los tiempos que mandó el servidor.
+// Devuelve también el progreso dentro de la fase, que es lo que come
+// poseArma(). Si el golpe ya terminó, reposo.
+function faseDeGolpe(golpe, ahora) {
+  if (!golpe) return { fase: 'reposo', progreso: 0 }
+  var ini = Number(golpe.inicio), des = Number(golpe.desde), has = Number(golpe.hasta)
+  var t = Number(ahora)
+  if (!isFinite(ini) || !isFinite(des) || !isFinite(has) || !isFinite(t)) return { fase: 'reposo', progreso: 0 }
+  if (t < des) {
+    var d1 = des - ini
+    return { fase: 'anticipacion', progreso: d1 > 0 ? (t - ini) / d1 : 1 }
+  }
+  if (t <= has) {
+    var d2 = has - des
+    return { fase: 'activa', progreso: d2 > 0 ? (t - des) / d2 : 1 }
+  }
+  // La recuperación no la manda el servidor: es lo que queda hasta
+  // poder volver a pegar. Se le da una duración fija para que el arma
+  // vuelva a su sitio en vez de quedarse plantada a media zancada.
+  var d3 = 180
+  var p3 = (t - has) / d3
+  if (p3 >= 1) return { fase: 'reposo', progreso: 0 }
+  return { fase: 'recuperacion', progreso: p3 }
+}
+
+// Si el personaje mira a la izquierda, el arma se voltea EN VERTICAL, no
+// en horizontal: así el filo sigue mirando arriba. Es lo mismo que ya
+// hace la arena (criptomundo-arena.js), y es lo que hace cualquier juego
+// 2D con sprites laterales.
+function volteoDeArma(dirApuntado) {
+  return Math.cos(Number(dirApuntado) || 0) < 0 ? -1 : 1
+}
+</script>`
+
+// El combate en tiempo real, en pantalla.
+//
+// QUÉ HABÍA
+// La FASE C puso los monstruos en el servidor —compartidos por zona, con
+// su vida y su posición— y NADIE los dibujaba. El mapa seguía inventando
+// los suyos en el navegador y abriendo batallas por turnos al tocarlos.
+// Dos mundos a la vez, y el bueno invisible.
+//
+// QUÉ HACE ESTO
+// Pulsa /api/mundo/combate diez veces por segundo, dibuja lo que
+// conteste el servidor y manda la intención: hacia dónde apuntas y si
+// tienes pulsado. No decide nada. El daño, la vida, el botín y a quién
+// toca el golpe siguen saliendo del servidor.
+//
+// Y APAGA EL MUNDO FALSO donde el servidor sí simula. Si una zona le
+// devuelve monstruos, el navegador deja de poner los suyos y de abrir
+// batallas por turnos ahí. Donde el servidor no simula —el pueblo, la
+// cripta, el castillo— todo sigue exactamente como estaba.
+//
+// LA PREDICCIÓN, Y POR QUÉ NO ES UN ADORNO
+// Medido en la FASE A: de pulsar a ver el gesto pasan 98 ms sin hacer
+// nada. Si el arma no se moviera hasta que contesta el servidor, el
+// botón se sentiría roto. Así que el GESTO arranca al pulsar, en local.
+// El daño, el número y el destello NO: esos solo se pintan cuando llega
+// el suceso del servidor. Si el servidor rechaza el golpe, el arma
+// vuelve a reposo y no ha pasado nada.
+PAGES['criptomundo-mundo2d.html'] += `<script>
+
+var MC = {
+  activo: false,          // ¿el servidor simula esta zona?
+  monstruos: {},          // id → { dibujo, vida, destino, ... }
+  proyectiles: {},
+  numeros: [],
+  ultimoPulso: 0,
+  apuntar: 0,
+  pulsado: false,
+  bloquear: false,
+  golpeLocal: null,       // predicción: el gesto arranca aquí
+  golpeServidor: null,
+  temblorDesde: 0,
+  temblorActivo: false,
+  arma: { tipoUso: 'espada', arco: 1.05, imagen: null, empunadura: { x: 0.79, y: 0.79 }, spriteAngulo: -2.356 },
+  seq: 0,
+}
+
+var MC_PULSO_MS = 100
+var MC_RETRASO_MS = 100     // interpolación: se dibuja un paso por detrás
+
+// ── El pulso ───────────────────────────────────────────────────────
+async function mcPulso() {
+  if (!gameScene || typeof gameScene.px !== 'number') return
+  var ahora = Date.now()
+  if (ahora - MC.ultimoPulso < MC_PULSO_MS) return
+  MC.ultimoPulso = ahora
+  MC.seq++
+
+  var pos = {
+    zona: currentZone,
+    x: gameScene.px / (gameScene.MW / MUNDO_ESPACIO.ancho),
+    y: gameScene.py / (gameScene.MH / MUNDO_ESPACIO.alto),
+    dir: MC.apuntar,
+    anim: gameScene.andando ? 'walk' : 'idle',
+  }
+  var entrada = {
+    seq: MC.seq,
+    ax: Math.cos(MC.apuntar), ay: Math.sin(MC.apuntar),
+    pulsado: !!MC.pulsado, bloquear: !!MC.bloquear,
+  }
+  var r = await apiPost('/api/mundo/combate', { pos: pos, entrada: entrada })
+  if (r.ok) mcRecibir(r.data)
+}
+
+function mcRecibir(d) {
+  if (!d) return
+  var habia = MC.activo
+  MC.activo = (d.monstruos || []).length > 0 || Object.keys(MC.monstruos).length > 0
+  // La primera vez que una zona resulta estar simulada, se apagan los
+  // monstruos de mentira del navegador.
+  if (!habia && MC.activo && typeof mcApagarFalsos === 'function') mcApagarFalsos()
+
+  mcPintarMonstruos(d.monstruos || [])
+  mcPintarProyectiles(d.proyectiles || [])
+  if (d.yo) {
+    MC.golpeServidor = d.yo.golpe || null
+    if (typeof PLAYER_HP_SYNC === 'function') PLAYER_HP_SYNC(d.yo)
+  }
+  for (var i = 0; i < (d.sucesos || []).length; i++) mcSuceso(d.sucesos[i])
+}
+
+function mcSuceso(s) {
+  if (!s) return
+  if (s.tipo === 'dano') {
+    var m = MC.monstruos[s.a]
+    mcNumero(s.cantidad, false, m ? m.x : gameScene.px, m ? m.y : gameScene.py, false)
+    if (m) mcDestello(m)
+  } else if (s.tipo === 'dano_jugador' || (s.tipo === 'dano' && s.a === 'yo')) {
+    mcNumero(s.cantidad, false, gameScene.px, gameScene.py, true)
+    mcTemblar()
+    if (s.bloqueado) addLog('🛡️ Bloqueaste el golpe.', 'combat')
+  } else if (s.tipo === 'muerte_monstruo') {
+    mcQuitarMonstruo(s.id)
+  } else if (s.tipo === 'aviso') {
+    var a = MC.monstruos[s.de]
+    if (a) a.avisandoHasta = Date.now() + (s.ms || 500)
+    addLog('⚠️ ¡Prepara un golpe fuerte! Bloquea con el clic derecho.', 'combat')
+  } else if (s.tipo === 'recompensa') {
+    addLog('💰 +' + s.oro + ' oro · +' + s.xp + ' XP', 'reward')
+    for (var i = 0; i < (s.botin || []).length; i++) {
+      addLog('🎁 ' + (s.botin[i].itemId) + ' ×' + (s.botin[i].quantity || 1), 'reward')
+    }
+    if ((s.subidas || []).length) addLog('⭐ ¡Nivel ' + s.nivel + '!', 'reward')
+    if (typeof syncCharacter === 'function') syncCharacter()
+    if (typeof cargarHotbar === 'function') cargarHotbar()
+  } else if (s.tipo === 'muerte') {
+    addLog('💀 Has caído. Pierdes ' + s.oroPerdido + ' de oro.', 'combat')
+    addLog('El enemigo se recupera a medias, no del todo.', 'system')
+    if (typeof syncCharacter === 'function') syncCharacter()
+  } else if (s.tipo === 'sin_mana') {
+    addLog('🔵 No tienes maná suficiente.', 'system')
+  } else if (s.tipo === 'objeto') {
+    addLog('🧪 Bebes. +' + s.cura + ' de vida.', 'combat')
+    if (typeof syncCharacter === 'function') syncCharacter()
+    if (typeof cargarHotbar === 'function') cargarHotbar()
+  }
+}
+
+// ── Dibujar ────────────────────────────────────────────────────────
+function mcEscala() {
+  return { x: gameScene.MW / MUNDO_ESPACIO.ancho, y: gameScene.MH / MUNDO_ESPACIO.alto }
+}
+
+function mcPintarMonstruos(lista) {
+  var e = mcEscala()
+  var vistos = {}
+  for (var i = 0; i < lista.length; i++) {
+    var v = lista[i]
+    vistos[v.id] = true
+    var x = v.x * e.x, y = v.y * e.y
+    var m = MC.monstruos[v.id]
+    if (!m) {
+      m = {
+        x: x, y: y, destinoX: x, destinoY: y,
+        cuerpo: gameScene.add.text(x, y, v.icono || '👾', { fontSize: '24px', resolution: 2 })
+          .setOrigin(0.5).setDepth(7),
+        sombra: gameScene.add.ellipse(x, y + 13, 24, 8, 0x000000, 0.3).setDepth(6),
+        barra: gameScene.add.graphics().setDepth(8),
+        destelloHasta: 0, avisandoHasta: 0,
+      }
+      MC.monstruos[v.id] = m
+    }
+    // Interpolación con un paso de retraso: llegan diez posiciones por
+    // segundo y se dibuja a sesenta. Poniéndolos donde diga el último
+    // paquete, avanzan a tirones.
+    m.destinoX = x; m.destinoY = y
+    m.vida = v.vida; m.vidaMax = v.vidaMax
+    m.avisando = !!v.aviso
+    m.cuerpo.setText(v.icono || '👾')
+  }
+  var ids = Object.keys(MC.monstruos)
+  for (var k = 0; k < ids.length; k++) if (!vistos[ids[k]]) mcQuitarMonstruo(ids[k])
+}
+
+function mcQuitarMonstruo(id) {
+  var m = MC.monstruos[id]
+  if (!m) return
+  try { m.cuerpo.destroy(); m.sombra.destroy(); m.barra.destroy() } catch (e) {}
+  delete MC.monstruos[id]
+}
+
+function mcPintarProyectiles(lista) {
+  var e = mcEscala()
+  var vistos = {}
+  for (var i = 0; i < lista.length; i++) {
+    var v = lista[i]
+    vistos[v.id] = true
+    var x = v.x * e.x, y = v.y * e.y
+    var p = MC.proyectiles[v.id]
+    if (!p) {
+      p = { dibujo: gameScene.add.circle(x, y, 4, 0xF0D070).setDepth(9), x: x, y: y }
+      MC.proyectiles[v.id] = p
+    }
+    p.destinoX = x; p.destinoY = y
+  }
+  var ids = Object.keys(MC.proyectiles)
+  for (var k = 0; k < ids.length; k++) {
+    if (vistos[ids[k]]) continue
+    try { MC.proyectiles[ids[k]].dibujo.destroy() } catch (e) {}
+    delete MC.proyectiles[ids[k]]
+  }
+}
+
+function mcDestello(m) { m.destelloHasta = Date.now() + 80 }
+
+function mcNumero(cantidad, critico, x, y, propio) {
+  MC.numeros.push({
+    nacido: Date.now(),
+    suceso: { cantidad: cantidad, critico: !!critico, propio: !!propio, x: x, y: y, desvio: desvioDeNumero() },
+    dibujo: gameScene.add.text(x, y, String(cantidad), {
+      fontFamily: 'Cinzel', fontSize: critico ? '16px' : '13px',
+      color: propio ? '#F87171' : (critico ? '#F0D070' : '#FFFFFF'),
+      stroke: '#05070A', strokeThickness: 3, resolution: 2,
+    }).setOrigin(0.5).setDepth(20),
+  })
+  if (critico) mcTemblar()
+}
+
+function mcTemblar() {
+  if (!temblorActivo()) return
+  MC.temblorDesde = Date.now()
+  MC.temblorActivo = true
+}
+
+// ── El bucle de dibujo ─────────────────────────────────────────────
+// Se llama desde el update() del mundo, a sesenta por segundo.
+function mcActualizar(escena) {
+  if (!escena || !escena.game) return
+  var ahora = Date.now()
+  var k = Math.min(1, (escena.game.loop.delta / 1000) * 10)   // 100 ms de retraso
+
+  var ids = Object.keys(MC.monstruos)
+  for (var i = 0; i < ids.length; i++) {
+    var m = MC.monstruos[ids[i]]
+    m.x += (m.destinoX - m.x) * k
+    m.y += (m.destinoY - m.y) * k
+    m.cuerpo.setPosition(m.x, m.y)
+    m.sombra.setPosition(m.x, m.y + 13)
+    // Destello blanco al encajar, 80 ms.
+    m.cuerpo.setAlpha(ahora < m.destelloHasta ? 0.35 : 1)
+    // Aviso de golpe: se tiñe para que se vea que va a pegar. Es LA
+    // señal para bloquear, y sin ella el aviso de 500 ms no sirve.
+    m.cuerpo.setScale(m.avisando ? 1.25 : 1)
+    // Barra de vida: solo cuando NO está entera.
+    m.barra.clear()
+    if (m.vidaMax && m.vida < m.vidaMax) {
+      var w = 26, frac = Math.max(0, m.vida / m.vidaMax)
+      m.barra.fillStyle(0x05070A, 0.8); m.barra.fillRect(m.x - w / 2 - 1, m.y - 20, w + 2, 5)
+      m.barra.fillStyle(frac > 0.5 ? 0x4AC94A : frac > 0.25 ? 0xF0D070 : 0xF87171, 1)
+      m.barra.fillRect(m.x - w / 2, m.y - 19, w * frac, 3)
+    }
+  }
+
+  var pid = Object.keys(MC.proyectiles)
+  for (var j = 0; j < pid.length; j++) {
+    var p = MC.proyectiles[pid[j]]
+    p.x += (p.destinoX - p.x) * k
+    p.y += (p.destinoY - p.y) * k
+    p.dibujo.setPosition(p.x, p.y)
+  }
+
+  // Los números
+  var vivos = []
+  for (var n = 0; n < MC.numeros.length; n++) {
+    var num = MC.numeros[n]
+    var f = numeroFlotante(num.suceso, ahora - num.nacido)
+    if (!f.vivo) { try { num.dibujo.destroy() } catch (e) {} ; continue }
+    num.dibujo.setPosition(f.x, f.y)
+    num.dibujo.setAlpha(f.alfa)
+    vivos.push(num)
+  }
+  MC.numeros = vivos
+
+  // El temblor de cámara
+  if (MC.temblorActivo) {
+    var t = temblorDeCamara(ahora - MC.temblorDesde, true)
+    if (t.x === 0 && t.y === 0) {
+      MC.temblorActivo = false
+      escena.cameras.main.setScroll(escena.cameras.main.scrollX, escena.cameras.main.scrollY)
+    } else {
+      escena.cameras.main.setScroll(escena.cameras.main.scrollX + t.x, escena.cameras.main.scrollY + t.y)
+    }
+  }
+
+  mcDibujarArma(escena, ahora)
+  mcPulso()
+}
+
+// ── El arma en la mano ─────────────────────────────────────────────
+function mcDibujarArma(escena, ahora) {
+  if (!escena.armaDibujo) {
+    escena.armaDibujo = escena.add.text(0, 0, '', { fontSize: '17px', resolution: 2 })
+      .setOrigin(0.5).setDepth(11)
+  }
+  var arma = MC.arma
+  // La predicción manda mientras el servidor no haya contestado; en
+  // cuanto contesta, manda él.
+  var g = MC.golpeServidor || MC.golpeLocal
+  var f = faseDeGolpe(g, ahora)
+  if (f.fase === 'reposo' && MC.golpeLocal && ahora > MC.golpeLocal.hasta + 200) MC.golpeLocal = null
+  var pose = poseArma(arma.tipoUso, f.fase, f.progreso, arma.arco)
+  var v = volteoDeArma(MC.apuntar)
+
+  var dist = 13 + pose.offsetX
+  var x = escena.px + Math.cos(MC.apuntar) * dist
+  var y = escena.py + Math.sin(MC.apuntar) * dist + pose.offsetY
+  escena.armaDibujo.setText(arma.icono || '⚔️')
+  escena.armaDibujo.setPosition(x, y)
+  escena.armaDibujo.setRotation(MC.apuntar + pose.angulo * v)
+  escena.armaDibujo.setScale(pose.escala, pose.escala * v)
+  escena.armaDibujo.setVisible(MC.activo)
+}
+
+// ── Apuntar y pegar ────────────────────────────────────────────────
+//
+// RATÓN: la dirección va del centro del personaje al cursor, y el
+// personaje se voltea hacia el cursor aunque camine hacia el otro lado.
+// Es lo que hace que puedas retroceder pegando.
+function mcRaton(escena, punteroX, punteroY) {
+  var cam = escena.cameras.main
+  var mx = punteroX + cam.scrollX
+  var my = punteroY + cam.scrollY
+  MC.apuntar = Math.atan2(my - escena.py, mx - escena.px)
+}
+
+// TÁCTIL: si arrastras el dedo desde el botón, esa es la dirección. Si
+// solo tocas, apunta al monstruo vivo más cercano dentro de vez y media
+// el alcance del arma; y si no hay ninguno, hacia donde miras.
+function mcApuntarTactil(escena, dx, dy) {
+  if (Math.hypot(dx, dy) > 0.2) { MC.apuntar = Math.atan2(dy, dx); return }
+  var mejor = null, d = Infinity
+  var alcance = (MC.arma.alcance || 60) * 1.5
+  var ids = Object.keys(MC.monstruos)
+  for (var i = 0; i < ids.length; i++) {
+    var m = MC.monstruos[ids[i]]
+    var dd = Math.hypot(m.x - escena.px, m.y - escena.py)
+    if (dd < d && dd <= alcance) { d = dd; mejor = m }
+  }
+  if (mejor) { MC.apuntar = Math.atan2(mejor.y - escena.py, mejor.x - escena.px); return }
+  var dir = { right: 0, left: Math.PI, up: -Math.PI / 2, down: Math.PI / 2 }
+  MC.apuntar = dir[escena.lastDir] != null ? dir[escena.lastDir] : 0
+}
+
+// Empezar a pegar. La animación arranca AQUÍ, en local: medido, de
+// pulsar a ver el gesto pasan 98 ms si se espera al servidor, y eso se
+// siente como un botón roto. El daño no se predice: ese llega cuando
+// llega.
+function mcPulsar(si) {
+  MC.pulsado = !!si
+  if (!si || !MC.activo) return
+  var ahora = Date.now()
+  if (MC.golpeLocal && ahora < MC.golpeLocal.hasta) return
+  if (MC.golpeServidor && ahora < MC.golpeServidor.hasta) return
+  var cad = MC.arma.cadenciaMs || 420
+  var ant = Math.round(Math.max(60, Math.min(220, cad * 0.30)))
+  var act = Math.round(Math.max(60, Math.min(160, cad * 0.22)))
+  MC.golpeLocal = { inicio: ahora, desde: ahora + ant, hasta: ahora + ant + act }
+}
+
+function mcBloquear(si) { MC.bloquear = !!si }
+
+// De qué arma se trata. Sale de la barra, que es quien sabe cuál llevas
+// puesta; sus números vienen del servidor.
+async function mcCargarArma() {
+  var r = await apiGet('/api/hotbar')
+  if (!r.ok) return
+  var sel = (r.data.ranuras || [])[r.data.seleccionada || 0]
+  if (!sel || !sel.arma) { MC.arma.icono = '👊'; return }
+  MC.arma.icono = sel.icono || '⚔️'
+  MC.arma.imagen = sel.imagen || null
+  var p = await apiGet('/api/armas/' + sel.itemId)
+  if (p.ok && p.data && p.data.perfil) {
+    MC.arma.tipoUso = p.data.perfil.tipoUso
+    MC.arma.arco = p.data.perfil.arco
+    MC.arma.alcance = p.data.perfil.alcance
+    MC.arma.cadenciaMs = p.data.perfil.cadenciaMs
+    MC.arma.spriteAngulo = p.data.perfil.spriteAngulo
+    MC.arma.empunadura = p.data.perfil.empunadura
+  }
+}
+
+// Apagar el mundo de mentira donde el servidor sí simula.
+function mcApagarFalsos() {
+  if (!gameScene) return
+  addLog('⚔️ Los monstruos de esta zona son de verdad y los ves todos igual.', 'system')
+  for (var i = 0; i < (gameScene.monsterTexts || []).length; i++) {
+    try { gameScene.monsterTexts[i].destroy() } catch (e) {}
+    var d = (gameScene.monsterData || [])[i]
+    if (d) { try { d.label && d.label.destroy(); d.sombra && d.sombra.destroy() } catch (e) {} }
+  }
+  gameScene.monsterTexts = []
+  gameScene.monsterData = []
+  gameScene.monsterWalkTimers = []
+}
+
+// ── Controles ──────────────────────────────────────────────────────
+window.addEventListener('load', function () {
+  setTimeout(function () {
+    mcCargarArma()
+    if (!gameScene || !gameScene.input) return
+    gameScene.input.on('pointermove', function (p) { mcRaton(gameScene, p.x, p.y) })
+    gameScene.input.on('pointerdown', function (p) {
+      mcRaton(gameScene, p.x, p.y)
+      if (p.rightButtonDown && p.rightButtonDown()) mcBloquear(true)
+      else mcPulsar(true)
+    })
+    gameScene.input.on('pointerup', function () { mcPulsar(false); mcBloquear(false) })
+    // Sin esto, el clic derecho abre el menú del navegador en mitad de
+    // la pelea y te deja bloqueando para siempre.
+    var lienzo = document.getElementById('phaser-canvas')
+    if (lienzo) lienzo.addEventListener('contextmenu', function (e) { e.preventDefault() })
+  }, 600)
+})
+// Cambiar de arma en la barra cambia lo que se dibuja en la mano.
+window.addEventListener('cm-arma-cambiada', function () { mcCargarArma() })
+</script>`
+
+// Los números de daño que suben y se desvanecen.
+//
+// Otra función pura. Recibe un suceso del servidor y cuántos
+// milisegundos hace que llegó, y devuelve dónde se pinta, con qué
+// transparencia y de qué tamaño. Nada más.
+//
+// POR QUÉ IMPORTA QUE SEA PURA
+// Un número de daño es la única prueba que tiene el jugador de que su
+// golpe hizo algo. Si se pinta mal —se queda clavado, se apila, no se
+// va— parece que el juego se ha colgado. Y eso es lo que se puede
+// comprobar sin abrir un navegador: que a los 700 ms el alfa sea cero.
+PAGES['criptomundo-mundo2d.html'] += `<script>
+
+var NUM_VIDA_MS = 700          // lo que dura un número en pantalla
+var NUM_DESVANECE_MS = 250     // los últimos milisegundos, difuminándose
+var NUM_SUBIDA_PX = 24         // cuánto sube en toda su vida
+
+// suceso   { cantidad, critico, propio, x, y, desvio }
+// edadMs   cuánto hace que llegó
+function numeroFlotante(suceso, edadMs) {
+  var s = suceso || {}
+  var e = Number(edadMs)
+  if (!isFinite(e) || e < 0) e = 0
+  var vivo = e < NUM_VIDA_MS
+
+  // Sube deprisa al principio y frena: así se lee aunque salgan varios
+  // seguidos.
+  var p = Math.min(1, e / NUM_VIDA_MS)
+  var subida = NUM_SUBIDA_PX * (1 - (1 - p) * (1 - p))
+
+  // El desvanecido es solo el tramo final. Antes, opaco.
+  var alfa = 1
+  var desde = NUM_VIDA_MS - NUM_DESVANECE_MS
+  if (e >= desde) alfa = Math.max(0, 1 - (e - desde) / NUM_DESVANECE_MS)
+  if (!vivo) alfa = 0
+
+  var critico = !!s.critico
+  var propio = !!s.propio
+
+  return {
+    vivo: vivo,
+    texto: String(Math.max(0, Math.round(Number(s.cantidad) || 0))),
+    x: (Number(s.x) || 0) + (Number(s.desvio) || 0),
+    y: (Number(s.y) || 0) - subida,
+    alfa: alfa,
+    // Un crítico es más grande y amarillo; lo que recibe el jugador, rojo.
+    escala: critico ? 1.3 : 1,
+    color: propio ? '#F87171' : (critico ? '#F0D070' : '#FFFFFF'),
+  }
+}
+
+// El desvío lateral al azar, para que dos números seguidos no se tapen.
+// Se calcula UNA vez, al nacer el número, no en cada fotograma: si no,
+// el número tiembla en vez de subir recto.
+function desvioDeNumero() { return (Math.random() * 16) - 8 }
+
+// El temblor de cámara. Dos píxeles, cien milisegundos, y solo cuando el
+// jugador recibe daño o da un crítico: si tiembla con todo, deja de
+// significar nada y marea.
+var TEMBLOR_PX = 2
+var TEMBLOR_MS = 100
+
+function temblorDeCamara(edadMs, activo) {
+  if (!activo) return { x: 0, y: 0 }
+  var e = Number(edadMs)
+  if (!isFinite(e) || e < 0 || e >= TEMBLOR_MS) return { x: 0, y: 0 }
+  var fuerza = TEMBLOR_PX * (1 - e / TEMBLOR_MS)
+  return {
+    x: (Math.random() * 2 - 1) * fuerza,
+    y: (Math.random() * 2 - 1) * fuerza,
+  }
+}
+
+// ¿Se puede temblar? Si el sistema pide menos movimiento, no. Y hay un
+// ajuste propio para quien lo quiera quitar aunque su sistema no lo pida.
+var TEMBLOR_PERMITIDO = true
+function temblorActivo() {
+  if (!TEMBLOR_PERMITIDO) return false
+  try {
+    if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return false
+  } catch (e) {}
+  return true
+}
+</script>`
+
 // La barra de objetos, en pantalla.
 //
 // QUÉ HABÍA
@@ -5339,127 +5971,6 @@ function ranuraVecina(actual, paso) {
   #barra-objetos .pasar { width: 26px; font-size: 13px; }
 }
 @media (min-width: 481px) { #barra-objetos .pasar { display: none; } }
-/* ===== CSS-MOVIL:INICIO (generado por aplicar-css-movil.js) ===== */
-  /* El juego se diseñó para pantalla ancha: tres columnas fijas de
-     260-300 px. En un móvil eso deja el contenido central en 40 px y la
-     página inservible. Aquí las columnas se apilan y las alturas fijas
-     pasan a automáticas. */
-  @media (max-width: 860px) {
-    html, body { overflow-x: hidden; -webkit-text-size-adjust: 100%; }
-
-    /* Tres columnas → una sola, en vertical */
-    .layout, .pvp-layout, .creator-body, .main-layout, .content-layout {
-      display: block !important;
-      height: auto !important;
-      overflow: visible !important;
-    }
-
-    /* Las barras laterales dejan de ser columnas y pasan a ser bloques
-       con altura acotada, para que no haya que hacer scroll eterno */
-    .sidebar, .left-panel, .right-panel, .left-sidebar, .right-sidebar,
-    .creator-preview, .creator-options, #left-panel, #right-panel,
-    #left-sidebar, #right-sidebar {
-      width: auto !important;
-      max-width: none !important;
-      min-width: 0 !important;
-      max-height: 46vh;
-      overflow-y: auto;
-      border-left: none !important;
-      border-right: none !important;
-      border-top: 1px solid var(--border, #2A2418);
-    }
-
-    main, .main, .center-panel, #center-panel, .market-main, #market-main {
-      width: auto !important;
-      min-width: 0 !important;
-    }
-
-    /* Alturas atadas a la ventana: en móvil sobra con que crezcan */
-    [style*="calc(100vh"], .arena, .arena-scene, .combat-log, .run-log,
-    .listings-area, .quest-scroll, .bench, .inv-body {
-      height: auto !important;
-      max-height: 60vh;
-    }
-
-    /* Barras superiores: que envuelvan en vez de desbordar */
-    .topbar, .game-topbar, .header, .hdr, .mode-tabs, .zone-tabs, .filters {
-      flex-wrap: wrap !important;
-      gap: 6px !important;
-      padding: 8px 10px !important;
-      height: auto !important;
-    }
-
-    /* Rejillas apretadas: mínimo más pequeño para que quepan 2 por fila */
-    .listings-grid, .inv-pick-grid, .inv-grid, .skin-grid, .skin-modal-grid,
-    .ingredients, .dng-act-row, .pvp-act-grid, .action-grid, .rewards-grid {
-      grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)) !important;
-    }
-
-    /* Objetivos táctiles: nada por debajo de 40 px de alto */
-    button, .action-btn, .dng-btn, .mode-btn, .tab, .qtab, .rtab, .chip {
-      min-height: 40px;
-    }
-
-    .action-btn, .dng-btn { padding: 8px 6px !important; }
-    .a-icon, .db-icon { font-size: 20px !important; }
-    .a-cost, .db-cost { font-size: 10px !important; }
-
-    /* Diálogos que en escritorio son ventanas centradas */
-    .skin-modal-box, .result-overlay > *, .modal-box, .co-box {
-      max-width: 94vw !important;
-      max-height: 88vh !important;
-      overflow-y: auto;
-    }
-  }
-
-  /* Pantallas muy estrechas: una sola columna en las rejillas */
-  @media (max-width: 480px) {
-    .listings-grid, .skin-grid, .ingredients {
-      grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)) !important;
-    }
-    .creator-title, .gtb-name { font-size: 15px !important; }
-  }
-
-  /* ── Pulido visual compartido ──────────────────────────
-     Detalles baratos que se notan mucho: transiciones suaves,
-     tarjetas con algo de profundidad y rarezas con brillo propio. */
-  * { -webkit-tap-highlight-color: transparent; }
-
-  button, .chip, .tab, .qtab, .rtab, .mode-btn, .skin-card, .sm-card,
-  .listing-card, .listing-row, .recipe-card, .dng-card, .quest-card,
-  .npc-card, .guild-card, .mon-btn, .inv-slot, .loot-item {
-    transition: transform .14s ease, box-shadow .14s ease, border-color .14s ease, background .14s ease;
-  }
-  .listing-card:hover, .recipe-card:hover, .dng-card:hover,
-  .quest-card:hover, .npc-card:hover, .guild-card:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 6px 18px rgba(0,0,0,.45);
-  }
-  button:active, .chip:active, .mon-btn:active { transform: scale(.97); }
-
-  /* Las rarezas altas se distinguen de un vistazo, sin leer */
-  .r-epic, .r-legendary, .r-mythic { position: relative; }
-  .r-legendary { box-shadow: 0 0 12px rgba(255,128,0,.22); }
-  .r-mythic    { box-shadow: 0 0 12px rgba(255,64,64,.24); }
-  .r-epic      { box-shadow: 0 0 10px rgba(163,53,238,.20); }
-
-  /* Barras de vida y maná: brillo interior en vez de color plano */
-  .hp-bar-fill, .bar-fill.hp, .gtb-bar-fill.hp,
-  .mp-bar-fill, .bar-fill.mp, .gtb-bar-fill.mp,
-  .xp-bar-fill, .gtb-bar-fill.xp {
-    box-shadow: inset 0 1px 0 rgba(255,255,255,.25);
-  }
-
-  /* Aparición suave de los paneles al cargar: quita la sensación de
-     pantallazo seco al cambiar de módulo */
-  @keyframes entrar { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
-  .sidebar, .listing-card, .recipe-card, .quest-card, .dng-card, .guild-card {
-    animation: entrar .22s ease both;
-  }
-  @media (prefers-reduced-motion: reduce) {
-    *, *::before, *::after { animation: none !important; transition: none !important; }
-  }
-/* ===== CSS-MOVIL:FIN ===== */
 </style>
 <div id="barra-objetos" role="toolbar" aria-label="Barra de objetos"></div>
 <div id="nombre-arma"></div>
@@ -5530,7 +6041,12 @@ async function elegirRanuraHotbar(i) {
   HOTBAR.seleccionada = r.data.seleccionada
   pintarHotbar()
   var act2 = HOTBAR.ranuras[i]
-  if (act2 && act2.arma) anunciarArma(act2)
+  if (act2 && act2.arma) {
+    anunciarArma(act2)
+    // El combate dibuja el arma en la mano: tiene que enterarse de que
+    // ha cambiado, o seguirías blandiendo la anterior.
+    try { window.dispatchEvent(new Event('cm-arma-cambiada')) } catch (e) {}
+  }
   if (r.data.stats && typeof syncCharacter === 'function') syncCharacter()
 }
 
@@ -29510,6 +30026,22 @@ async function handleAPI(req, res, pathname, query) {
     const r = ponerEnHotbar(char, body.ranura, ref === undefined ? null : ref)
     if (r.error) return fail(res, r.error, r.code)
     return json(res, r)
+  }
+  // El perfil de un arma, para que la pantalla sepa cómo dibujar el
+  // gesto: qué tipo es, cuánto barre, a qué distancia y a qué ritmo.
+  // Son datos de catálogo, no decisiones: el daño lo sigue calculando
+  // el servidor y esto no lo publica.
+  const armaMatch = pathname.match(/^\/api\/armas\/([a-z_0-9]+)$/)
+  if (armaMatch && req.method === 'GET') {
+    const p2 = perfilDeArma(armaMatch[1])
+    if (!p2) return fail(res, 'Arma desconocida', 404)
+    return json(res, { perfil: {
+      id: p2.id, tipoUso: p2.tipoUso, alcance: p2.alcance, arco: p2.arco,
+      arcoGrados: p2.arcoGrados, cadenciaMs: p2.cadenciaMs, gesto: p2.gesto,
+      empunadura: p2.empunadura, spriteAngulo: p2.spriteAngulo,
+      icono: p2.icono, imagen: p2.imagen, nombre: p2.nombre,
+      costeMp: p2.costeMp, autoGolpe: p2.autoGolpe,
+    } })
   }
   if (pathname === '/api/hotbar/mover' && req.method === 'POST') {
     const r = moverEnHotbar(char, body.desde, body.hasta)
