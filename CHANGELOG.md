@@ -2,6 +2,62 @@
 
 Cada versión con lo que la motivó. Los detalles completos están en `docs/CAMBIOS_VN.md`.
 
+## v33 (en curso) — Combate estilo Terraria y barra de objetos
+
+### La auditoría dijo que medio motor ya estaba escrito, en el sitio equivocado
+
+Antes de tocar nada se releyó el encargo punto por punto contra el código.
+Casi todo lo que pedía la fase de servidor —ventanas de golpe, sector de
+alcance y arco, «un golpe toca una vez», retroceso, invulnerabilidad,
+proyectiles con colisión por segmento, IA con aviso— ya existe. Vive dentro
+de la arena. Lo que no existe son los monstruos del mapa: los inventa el
+navegador en posiciones al azar, uno por jugador, y el servidor no sabe ni
+dónde están ni cuánta vida les queda.
+
+Y la latencia no es de red. El viaje HTTP son dos milisegundos y *mejora*
+con cuatro jugadores. Lo que se nota es el paso de 100 ms: de pulsar a ver
+el gesto pasan 98 ms. Eso convierte la predicción visual en obligatoria, no
+en un adorno.
+
+### Trece cosas del encargo que no encajaban con el código
+
+La más peligrosa: el encargo escribe el arco de las armas en grados
+totales, y el código lo tiene en radianes y como semi-apertura. Leer
+`arco: 120` tal cual son **120 radianes**: el arma acertaría en cualquier
+dirección, incluso a la espalda. Las demás, en la auditoría.
+
+### El perfil de arma no declara armas: las lee
+
+Cinco de los siete campos que pedía el encargo ya existían, y no son
+números puestos a ojo: salen de una curva contra el precio de cada arma que
+en su día corrigió ocho. Añadirlos otra vez habría creado un tercer
+catálogo que se desincroniza. Ahora hay una precedencia escrita —lo que
+diga `ARMAS`, luego lo que diga el objeto, luego el defecto de su tipo— y
+ningún arma que ya existe cambia de nada.
+
+De paso queda contestada una pregunta del encargo: los cuatro tipos de arma
+se pueden usar hoy. Nueve espadas, una lanza, dos arcos y dos de magia. Lo
+único que falta es el gasto de maná, que hoy es cero en todas.
+
+### La barra recuerda lo que iba en cada hueco
+
+Guarda el identificador del objeto y no el de la fila del inventario, y eso
+no es un detalle: la fila desaparece cuando te bebes la última poción. Con
+la fila, la ranura se quedaría apuntando a nada. Así se queda en gris,
+diciendo «aquí van pociones», y se rellena sola en cuanto consigas más.
+
+### Una función declarada dos veces no da error, y eso costó caro
+
+Añadiendo el perfil de arma declaré un `perfilDe` sin saber que ya existía
+otro, el que sirve el perfil del jugador. Todo el servidor se concatena en
+un solo archivo: la segunda pisa a la primera en silencio. El archivo
+parseaba, el servidor arrancaba, y `/api/profile` empezó a devolver el arma
+equipada en vez del perfil. Lo cazó una prueba de la arena, de casualidad,
+tres pasos más allá.
+
+Ahora el build lo comprueba. Las constantes repetidas ya reventaban al
+compilar; las funciones no.
+
 ## v32 (en curso) — El mundo deja de pelear consigo mismo
 
 ### El mercado se quedaba tu objeto cuando la publicación caducaba

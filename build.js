@@ -148,6 +148,56 @@ function comprobarSintaxis(out) {
   }
 }
 
+// ── Nombres de primer nivel repetidos ──────────────────────────────
+//
+// Todo el servidor se concatena en un solo archivo, así que dos módulos
+// que declaren una `function` con el mismo nombre NO dan error: la
+// segunda pisa a la primera, en silencio, y lo que se rompe es lo que
+// usaba la primera.
+//
+// Esto no es teórico. Añadiendo el perfil de arma de la FASE B declaré
+// un `perfilDe(char)` sin saber que ya existía `perfilDe(player)` en
+// 45-primeros-pasos.js, que es el que sirve /api/profile. El archivo
+// parseaba, el servidor arrancaba, y /api/profile empezó a devolver el
+// arma equipada. Lo cazó una prueba de la arena, por casualidad, tres
+// pasos más allá.
+//
+// Las `const` repetidas sí revientan al compilar y las caza
+// comprobarSintaxis(). Las funciones no. Esto las caza.
+//
+// SOLO EL SERVIDOR. Las páginas son documentos HTML distintos: que
+// criptomundo-mercado y criptomundo-guilds tengan cada una su showToast
+// no es un choque, porque nunca se cargan en la misma pestaña. Dentro de
+// UNA misma página sí lo sería —sus <script> comparten el global del
+// navegador— pero eso pide agrupar por PAGES[...] y hoy hay 45 casos
+// heredados. Queda anotado y sin hacer; el fallo que costó esta función
+// fue del servidor, que es donde todo comparte un solo ámbito de verdad.
+function comprobarNombresRepetidos(archivos) {
+  // Los identificadores del proyecto llevan eñes y tildes (dañarEnemigo,
+  // posición): \w no las cubre y partiría el nombre por la mitad.
+  const IDENT = /^(?:function|class)\s+([A-Za-z_$À-ɏ][A-Za-z0-9_$À-ɏ]*)/gm
+  const visto = new Map()
+  const choques = []
+  const soloServidor = archivos.filter(r => r.includes(path.join('src', 'server')))
+  for (const ruta of soloServidor) {
+    const corto = path.relative(SRC, ruta) || path.basename(ruta)
+    const texto = fs.readFileSync(ruta, 'utf8')
+    for (const m of texto.matchAll(IDENT)) {
+      const nombre = m[1]
+      if (visto.has(nombre)) choques.push({ nombre, antes: visto.get(nombre), ahora: corto })
+      else visto.set(nombre, corto)
+    }
+  }
+  if (!choques.length) return
+  console.error('❌ Hay funciones declaradas dos veces. Al concatenar, la segunda')
+  console.error('   pisa a la primera sin avisar y se rompe quien usaba la primera.\n')
+  for (const c of choques) {
+    console.error(`   · ${c.nombre}()  declarada en ${c.antes}  y otra vez en ${c.ahora}`)
+  }
+  console.error('\n   Cambia el nombre de una de las dos.')
+  process.exit(1)
+}
+
 function build() {
   const files = collect()
   // Una línea en blanco entre módulos para que el archivo generado se lea bien
@@ -159,6 +209,7 @@ function main() {
   const args = process.argv.slice(2)
   const { out, files } = build()
   comprobarVersion(out)
+  comprobarNombresRepetidos(files)
   comprobarSintaxis(out)
 
   if (args.includes('--check')) {

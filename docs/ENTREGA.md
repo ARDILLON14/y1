@@ -8,8 +8,8 @@ La foto de partida está en `docs/AUDITORIA_V31.md` y no se reescribe: sirve
 para comparar. El relato largo de cada cambio, con el porqué, está en
 `CHANGELOG.md`.
 
-**Estado al cerrar:** 53 archivos de prueba · 1.349 comprobaciones · 0 fallos
-· ~193 s con `npm test`.
+**Estado al cerrar:** 55 archivos de prueba · 1.459 comprobaciones · 0 fallos
+· ~186 s con `npm test`.
 
 ---
 
@@ -619,6 +619,115 @@ los dos casos rotos inyectados sobre un objeto salen con su nombre.
 
 **PRUEBAS QUE PASAN** · 53 archivos · 1.349 comprobaciones · 0 fallos.
 **SIGUIENTE** · ver abajo.
+
+---
+
+# v32 → v33 · Combate estilo Terraria + barra de objetos
+
+Encargo nuevo. Las fases van con letra (A–G) para no confundirlas con los
+pasos numerados de arriba.
+
+---
+
+## FASE A — Auditoría del combate
+
+**ARCHIVOS TOCADOS** · `docs/AUDITORIA_COMBATE_V32.md` (nuevo),
+`medir-latencia.js` y `medir-paso.js` (nuevos), `package.json`. **Ni una
+línea de gameplay.**
+**QUÉ SE ARREGLÓ** · nada, a propósito.
+**QUÉ SE AÑADIÓ** · la auditoría con archivo y línea en los nueve puntos
+que pide la fase, y `npm run latencia`.
+**PRUEBAS AÑADIDAS** · ninguna.
+**PRUEBAS QUE PASAN** · 53 archivos · 1.349 comprobaciones · 0 fallos.
+
+**MEDICIÓN** · el viaje HTTP es de 1,2 a 2,6 ms y **mejora** con cuatro
+jugadores. Lo que se nota es el paso de 100 ms: de pulsar a ver el gesto
+pasan **98 ms de media** (213 el peor), y a ver el daño **255 ms**, de los
+cuales 126 son la anticipación del arma, que es a propósito.
+
+**LO QUE CAMBIÓ EL PLAN** · casi todo el motor de la FASE C ya existe
+dentro de la arena; los monstruos del mapa NO existen en el servidor (los
+inventa el navegador, uno por jugador); y `/api/combat/action` lo usan 21
+archivos de prueba.
+
+**SE SABE Y NO SE ARREGLA AQUÍ** · 13 decisiones del encargo que chocan
+con el código, con propuesta para cada una. Aprobadas todas.
+**SIGUIENTE** · FASE B.
+
+---
+
+## FASE B — Modelo de datos
+
+**ARCHIVOS TOCADOS** · `src/server/59-armas-perfil.js`,
+`src/server/59-barra.js`, `src/server/59-combate-vivo.js` (los tres
+nuevos), `src/server/30-personajes-combate.js`, `build.js`,
+`run-tests.js`, `test-armas-perfil.js` y `test-barra-datos.js` (nuevos),
+`docs/AUDITORIA_COMBATE_V32.md`.
+
+**QUÉ SE AÑADIÓ** · el perfil de arma, la barra de objetos como dato, y el
+estado vivo del combate. **Todo inerte**: nada del servidor lo llama
+todavía. Los endpoints son la FASE D y el bucle es la FASE C.
+
+**LAS TRES DECISIONES QUE MÁS IMPORTAN**
+
+- **El perfil no declara armas: las lee.** Cinco de los siete campos que
+  pide la fase ya existían, medidos contra el precio de cada arma. La
+  precedencia es `ARMAS` > lo que declare el objeto > el defecto de su
+  tipo, así que **ningún arma existente cambia de nada** (R2), y los
+  valores por defecto de la sección B.2 solo tocan a un arma sin entrada
+  en `ARMAS`, que hoy no hay ninguna. Las 14 primeras comprobaciones de
+  `test-armas-perfil` son una por arma, campo a campo.
+- **La barra guarda el `itemId`, no el `uid`.** `removeItem` borra la fila
+  del inventario al llegar a cero, así que con uid la última poción se
+  llevaría la ranura por delante. Con itemId la ranura recuerda, se pone
+  en gris y se rellena sola, que es lo que pide C.6. **Desvío dicho en voz
+  alta:** D.1 dice que vender «vacía la ranura» y C.6 que «queda en gris».
+  Son incompatibles; me quedo con C.6 para todo.
+- **El estado vivo NO vive en el personaje.** `snapshotOf()` vuelca el
+  personaje entero, así que un campo «que no se guarda» dentro de algo que
+  se guarda es una regla que alguien romperá. Va en un Map aparte, como la
+  presencia del mundo. Gratis: reiniciar te deja fuera de combate.
+
+**MEDICIÓN** · `tipoUso` se deduce y da 9 espadas, 1 lanza, 2 arcos y 2 de
+magia. **Los cuatro tipos del encargo se pueden usar hoy.** Lo único que
+no existe es el gasto de maná: ninguna arma tiene `costeMp` y las dos de
+magia cuestan 0, que es como está el juego.
+
+**PRUEBAS AÑADIDAS** · `test-armas-perfil.js` (46) y
+`test-barra-datos.js` (64). No levantan servidor: evalúan los módulos de
+verdad en un contexto aislado, contra el catálogo de verdad. Contra el
+código anterior no arrancan: los módulos no existen.
+
+**DOS FALLOS MÍOS, Y UNA RED PARA EL SEGUNDO**
+
+- `perfilDe(null)` reventaba porque `armaDe()` lee `char.equipment` sin
+  mirar si hay personaje.
+- Y el gordo: declaré `perfilDe(char)` sin saber que **ya existía**
+  `perfilDe(player)` en `45-primeros-pasos.js`, que es el que sirve
+  `/api/profile`. Todo el servidor se concatena en un archivo, así que no
+  dio error: la pisó, en silencio, y `/api/profile` empezó a devolver el
+  arma equipada. Lo cazó una prueba de la arena tres pasos más allá, por
+  casualidad.
+
+  Por eso `build.js` tiene ahora `comprobarNombresRepetidos()`: una
+  `function` declarada dos veces entre los módulos del servidor **para el
+  build**. Las `const` repetidas ya reventaban al compilar; las funciones
+  no. Se le inyectó una colisión a propósito y salió con los dos archivos.
+  Solo mira el servidor: las páginas son documentos HTML distintos y no
+  comparten ámbito.
+
+**Y UN HALLAZGO DE PASO** · `newCharacter` mete `null` en el inventario si
+falta una plantilla, y dos de las suyas las inyecta otro módulo. Hoy no
+pasa, pero el día que pase, cualquiera que recorra el inventario se cae al
+leer `i.itemId` de un `null`. Un `.filter(Boolean)` quita esa clase de
+caída entera y hoy no cambia nada.
+
+**PRUEBAS QUE PASAN** · 55 archivos · 1.459 comprobaciones · 0 fallos ·
+186 s.
+**SE SABE Y NO SE ARREGLA AQUÍ** · dentro de UNA misma página sí hay 45
+funciones declaradas dos veces, y ahí sí comparten el global del
+navegador. Pide agrupar por página y es su propio trabajo.
+**SIGUIENTE** · FASE C, el combate en tiempo real en el mundo.
 
 ---
 

@@ -57,6 +57,10 @@ const PRUEBAS = [
   ['test-partida-completa', 3890], ['test-descanso', 3891],
   ['test-primera-mision', 3892], ['test-ensenar-combate', 3893],
   ['test-andar', 3894], ['test-tiempo-sin-mirar', 3896],
+  // Estas dos no levantan servidor: evalúan los módulos del servidor en
+  // un contexto aislado y prueban funciones puras. El puerto que se les
+  // pasa no lo usan, pero la tabla es una sola y así sigue siéndolo.
+  ['test-armas-perfil', 3897], ['test-barra-datos', 3898],
 ]
 
 // Estas miden TIEMPO: duraciones de animación, ventanas de golpe,

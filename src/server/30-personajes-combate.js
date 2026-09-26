@@ -259,7 +259,13 @@ function newCharacter(username, className) {
       makeItem('iron_ore', 5), makeItem('herb', 8), makeItem('wood', 6),
       makeItem('potion_hp', 3), makeItem('potion_hp_ii', 1), makeItem('water', 10),
       makeItem('semilla_trigo', 3), makeItem('semilla_hierba', 2),
-    ],
+      // makeItem devuelve null si la plantilla no existe, y dos de las
+      // de arriba las inyecta 48-recursos-mundo.js: si algún día ese
+      // módulo deja de cargarse, el inventario nacería con huecos y
+      // cualquiera que lo recorra (countItem, el mercado, la barra) se
+      // cae al leer i.itemId de un null. Filtrar aquí no cambia nada
+      // hoy —no hay ninguno— y quita esa clase de caída entera.
+    ].filter(Boolean),
     equipment: {}, skills: CLASSES[cls].skills.slice(), cooldowns: {},
     activeQuests: [], completedQuests: [], questCounters: {},
     achievements: [], zonesVisited: ['pueblo'],

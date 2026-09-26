@@ -21414,7 +21414,13 @@ function newCharacter(username, className) {
       makeItem('iron_ore', 5), makeItem('herb', 8), makeItem('wood', 6),
       makeItem('potion_hp', 3), makeItem('potion_hp_ii', 1), makeItem('water', 10),
       makeItem('semilla_trigo', 3), makeItem('semilla_hierba', 2),
-    ],
+      // makeItem devuelve null si la plantilla no existe, y dos de las
+      // de arriba las inyecta 48-recursos-mundo.js: si algún día ese
+      // módulo deja de cargarse, el inventario nacería con huecos y
+      // cualquiera que lo recorra (countItem, el mercado, la barra) se
+      // cae al leer i.itemId de un null. Filtrar aquí no cambia nada
+      // hoy —no hay ninguno— y quita esa clase de caída entera.
+    ].filter(Boolean),
     equipment: {}, skills: CLASSES[cls].skills.slice(), cooldowns: {},
     activeQuests: [], completedQuests: [], questCounters: {},
     achievements: [], zonesVisited: ['pueblo'],
@@ -26751,6 +26757,441 @@ function pasoJefe(p, ahora) {
                      texto: '¡Llama a sus guardias!' })
   }
 }
+
+// ═══════════════════════════════════════════════════════════════════
+//  PERFIL DE ARMA — lo que la FASE B pide, SIN un catálogo paralelo
+//
+//  El encargo propone añadir al catálogo `tipoUso`, `alcance`, `arco`,
+//  `retroceso`, `autoGolpe`, `proyectil` y `costeMp`. La auditoría
+//  (docs/AUDITORIA_COMBATE_V32.md) encontró que cinco de los siete YA
+//  ESTÁN, con otros nombres y otras unidades, medidos y cuadrados
+//  contra el precio de cada arma:
+//
+//      encargo        lo que hay        dónde
+//      ───────────────────────────────────────────────────────
+//      alcance        alcance           ARMAS, 58-arena.js:217
+//      arco           arco              ídem, pero RADIANES y SEMI
+//      retroceso      empuje            ídem, y es un impulso, no px
+//      proyectil      proyectil         ídem
+//      tipoUso        gesto + proyectil ídem, repartido en dos
+//      autoGolpe      —                 no existe
+//      costeMp        —                 no existe
+//
+//  Añadir los siete campos otra vez crearía un tercer catálogo que se
+//  desincroniza, que es exactamente lo que el comentario de
+//  58-arena.js:239 dice que no se haga. Así que esto NO declara armas:
+//  las lee y completa lo que falta.
+//
+//  REGLA DE PRECEDENCIA (decisión D1 de la auditoría):
+//      ARMAS  >  lo que declare el objeto  >  el defecto de su tipo
+//  O sea: ningún arma que ya existe cambia de nada. Los valores por
+//  defecto de la sección B.2 del encargo solo se aplican a un arma que
+//  NO tenga entrada en ARMAS, que hoy no hay ninguna.
+// ═══════════════════════════════════════════════════════════════════
+
+// ── Unidades, dichas en voz alta (decisión D2) ─────────────────────
+// `arco` es la SEMI-apertura EN RADIANES: resolverGolpe compara
+// `dif > arma.arco` con dif entre 0 y π. O sea que arco 1.6 es un
+// barrido de 183°, no de 1,6°, y desde luego no de 1,6 grados totales.
+//
+// Leer "arco: 120" como el valor del campo serían 120 RADIANES: el arma
+// acertaría en cualquier dirección, incluso a la espalda. Por eso las
+// dos conversiones viven aquí y en ningún otro sitio.
+function arcoAGrados(radianesSemi) { return radianesSemi * 2 * 180 / Math.PI }
+function gradosAArco(gradosTotales) { return (gradosTotales / 2) * Math.PI / 180 }
+
+// La invulnerabilidad tras encajar un golpe (decisión D4). Ya existía en
+// la arena con este valor; el mundo usará el MISMO, leído de aquí. Dos
+// números distintos para lo mismo es cómo empiezan a separarse dos
+// sistemas que deberían sentirse igual.
+const INVULN_MS = 450
+
+// ── Los cuatro tipos ───────────────────────────────────────────────
+// No es un campo nuevo: se deduce de lo que el arma ya declara.
+//   proyectil con elemento  → magia
+//   proyectil sin elemento  → arco
+//   gesto 'estocada'        → lanza
+//   todo lo demás           → espada
+function tipoUsoDe(a) {
+  if (!a) return 'espada'
+  if (a.proyectil) return a.proyectil.element ? 'magia' : 'arco'
+  if (a.gesto === 'estocada') return 'lanza'
+  return 'espada'
+}
+
+// Valores por defecto de la sección B.2, traducidos a las unidades de
+// verdad. SOLO se usan para un arma sin entrada en ARMAS.
+//
+// El `arco` sale de convertir los grados del encargo: 120° totales son
+// 1,047 rad de semi-apertura, y 30° son 0,262. El `empuje` NO es el
+// "retroceso en px" del encargo —son unidades distintas— así que se
+// toma la mediana de las armas reales de cada tipo, que es el único
+// número que no me estoy inventando.
+const POR_TIPO = {
+  espada: { alcance: 56, arco: gradosAArco(120), cadenciaMs: 460, dmg: 1.0, empuje: 150, autoGolpe: true, costeMp: 0 },
+  lanza:  { alcance: 80, arco: gradosAArco(30),  cadenciaMs: 440, dmg: 1.0, empuje: 120, autoGolpe: true, costeMp: 0 },
+  arco:   { alcance: 340, arco: gradosAArco(23), cadenciaMs: 560, dmg: 1.0, empuje: 55,  autoGolpe: true, costeMp: 0,
+            proyectil: { vel: 480, radio: 6, vidaMs: 1200 } },
+  magia:  { alcance: 320, arco: gradosAArco(34), cadenciaMs: 520, dmg: 1.0, empuje: 80,  autoGolpe: true, costeMp: 0,
+            proyectil: { vel: 360, radio: 8, vidaMs: 1500, element: 'ice' } },
+}
+
+// Cuántos proyectiles vivos puede tener un jugador a la vez. El encargo
+// pide 8 por tipo; aquí es 8 en total, que es más fácil de defender: el
+// tope existe para que nadie ahogue el paso del servidor, y al paso le
+// da igual de qué tipo sea cada uno.
+const PROYECTILES_MAX = 8
+
+// ── El perfil completo ─────────────────────────────────────────────
+// Se apoya en armaVista(), que ya junta ARMAS con lo visual del
+// catálogo. Aquí solo se añade lo que falta y se rellenan los huecos.
+function perfilDeArma(id) {
+  const vista = typeof armaVista === 'function' ? armaVista(id) : null
+  if (!vista) return null
+
+  // Un arma que no está en ARMAS: armaVista le presta los números de
+  // los puños. En ese caso, y SOLO en ese caso, mandan los defectos de
+  // su tipo, y el tipo lo dice el objeto.
+  const conocida = typeof ARMAS === 'object' && !!ARMAS[id]
+  const t = (typeof template === 'function' && template(id)) || null
+  const dicho = (t && t.combate) || {}
+  const tipoUso = dicho.tipoUso || tipoUsoDe(conocida ? vista : dicho)
+  const def = POR_TIPO[tipoUso] || POR_TIPO.espada
+
+  const elegir = (campo) => {
+    if (conocida && vista[campo] !== undefined) return vista[campo]
+    if (dicho[campo] !== undefined) return dicho[campo]
+    return def[campo]
+  }
+
+  const perfil = {
+    ...vista,
+    tipoUso,
+    alcance: elegir('alcance'),
+    arco: elegir('arco'),
+    cadenciaMs: elegir('cadenciaMs'),
+    dmg: elegir('dmg'),
+    empuje: elegir('empuje'),
+    proyectil: conocida ? vista.proyectil : (dicho.proyectil || def.proyectil || null),
+    // Los dos campos que sí son nuevos. Por defecto se puede mantener
+    // pulsado —es lo que pide el encargo— y ningún arma gasta maná, que
+    // es como está hoy el juego: cambiarlo movería el equilibrio.
+    autoGolpe: dicho.autoGolpe !== undefined ? !!dicho.autoGolpe : def.autoGolpe,
+    costeMp: Number.isFinite(dicho.costeMp) ? Math.max(0, Math.round(dicho.costeMp)) : def.costeMp,
+  }
+  perfil.tipo = perfil.proyectil ? 'ranged' : 'melee'
+  // Cortesía para quien lea el perfil desde fuera y piense en grados.
+  perfil.arcoGrados = arcoAGrados(perfil.arco)
+  return perfil
+}
+
+// El perfil del arma que lleva puesta un personaje.
+//
+// Se llama perfilArmaDe y no perfilDe porque perfilDe YA EXISTE: es el
+// que sirve /api/profile (45-primeros-pasos.js:120). Como todo el
+// servidor se concatena en un archivo, declarar otra funcion con ese
+// nombre no da error: la pisa. Lo hice, y /api/profile empezo a
+// devolver el arma equipada en vez del perfil del jugador.
+//
+// El guardia del principio no sobra: armaDe() lee char.equipment sin
+// mirar si hay personaje, y desde la arena siempre lo hay. Desde aquí no
+// necesariamente, y un perfil de arma no es sitio para que se caiga una
+// petición. Sin personaje, puños.
+function perfilArmaDe(char) {
+  if (!char || typeof char !== 'object') return perfilDeArma('puños')
+  const a = typeof armaDe === 'function' ? armaDe(char) : null
+  return a ? perfilDeArma(a.id) : perfilDeArma('puños')
+}
+
+// Cuántas armas de cada tipo se pueden usar hoy con el catálogo real.
+// Lo pregunta la sección B.3 del encargo, y lo contesta el catálogo, no
+// yo: si mañana se añade una lanza, esto lo dice solo.
+function inventarioDeTipos() {
+  const fuera = { espada: [], lanza: [], arco: [], magia: [] }
+  if (typeof ARMAS !== 'object') return fuera
+  for (const id of Object.keys(ARMAS)) {
+    const p = perfilDeArma(id)
+    if (p && fuera[p.tipoUso]) fuera[p.tipoUso].push(id)
+  }
+  return fuera
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  BARRA DE OBJETOS — el modelo de datos (FASE B.4 y las reglas de D.1)
+//
+//  Aquí NO hay endpoints: eso es la FASE D. Aquí están la forma del
+//  dato, la migración de las partidas viejas y las operaciones, que son
+//  funciones puras sobre el personaje y se pueden probar sin servidor.
+//
+//  QUÉ SE GUARDA, Y POR QUÉ ES EL itemId Y NO EL uid
+//
+//  El encargo dice "ids de objeto". Hay dos candidatos y la diferencia
+//  importa: `equipment.weapon` guarda el uid de una fila concreta del
+//  inventario, mientras que las cosas apilables (pociones) viven en una
+//  sola fila con cantidad.
+//
+//  removeItem() BORRA la fila cuando la cantidad llega a cero
+//  (30-personajes-combate.js:486). Con uid, beberse la última poción
+//  mataría el uid y la ranura apuntaría a algo que ya no existe. Con
+//  itemId, la ranura sigue diciendo "aquí van pociones", se pone a cero
+//  y en gris, y se rellena sola al conseguir más. Que es exactamente lo
+//  que pide la sección C.6.
+//
+//  DESVÍO DEL ENCARGO, DICHO EN VOZ ALTA
+//  La sección D.1 dice que vender un objeto "vacía su ranura". C.6 dice
+//  que una ranura agotada "queda en gris y se rellena sola". Son dos
+//  cosas distintas y no pueden ser las dos. Me quedo con C.6 para todo:
+//  la ranura RECUERDA. Vender tu espada deja la ranura en gris, no la
+//  borra, y si vuelves a comprar una espada igual, vuelve. Es mejor
+//  para quien juega y no tiene ningún caso raro.
+//
+//  QUÉ NO SE GUARDA
+//  Solo `hotbar` y `ranuraActiva` viven en el personaje. El estado vivo
+//  del combate (el golpe en curso, la invulnerabilidad) NO está aquí:
+//  está en 59-combate-vivo.js, fuera del personaje, porque snapshotOf()
+//  vuelca el personaje ENTERO (10-infra.js:108) y un campo "que no se
+//  guarda" dentro de algo que se guarda es una regla que alguien romperá.
+// ═══════════════════════════════════════════════════════════════════
+
+const BARRA_RANURAS = 10
+
+// Qué puede ir en una ranura: armas y consumibles. Ni armaduras, ni
+// materiales, ni semillas. El resto se rechaza con su motivo.
+//
+// «Consumible» no se decide por el `type` del catálogo. Se pregunta a
+// usableEnCombate() (31-turnos.js:92), que es quien ya lo decide para
+// beber en el combate por turnos: tiene heal, mana o buff. Así la barra
+// y el combate no pueden discrepar sobre qué es bebible, que es
+// justamente lo que pasaría con dos listas paralelas. Y de paso descarta
+// cosas que parecen bebida y no lo son: el Agua Pura es MATERIAL y no
+// cura nada.
+function puedeIrEnBarra(itemId) {
+  if (!itemId || typeof itemId !== 'string') return false
+  if (typeof ARMAS === 'object' && ARMAS[itemId]) return true
+  const t = typeof template === 'function' ? template(itemId) : null
+  if (!t) return false
+  if (t.slot === 'weapon') return true
+  return esConsumible(itemId)
+}
+
+function ranuraValida(n) {
+  return Number.isInteger(n) && n >= 0 && n < BARRA_RANURAS
+}
+
+// ── La migración ───────────────────────────────────────────────────
+// Una partida guardada de antes no trae barra. Se le hace una en el
+// primer momento en que alguien la pide, no al arrancar: así da igual
+// si los datos vinieron del archivo principal, de una copia de
+// seguridad o de un personaje creado antes de que esto existiera.
+// Es idempotente: pasar dos veces no cambia nada.
+function sembrarBarra(char) {
+  const barra = new Array(BARRA_RANURAS).fill(null)
+  if (!char) return barra
+
+  // Ranura 0: el arma equipada. Si no lleva ninguna, la mejor que
+  // tenga en la mochila, para que nadie aparezca con las manos vacías.
+  const uid = (char.equipment || {}).weapon
+  const puesta = uid && (char.inventory || []).find(i => i && i.uid === uid)
+  let arma = puesta && puedeIrEnBarra(puesta.itemId) ? puesta.itemId : null
+  if (!arma) {
+    const candidatas = (char.inventory || [])
+      .filter(i => i && i.itemId && typeof ARMAS === 'object' && ARMAS[i.itemId])
+      .sort((a, b) => valorDe(b.itemId) - valorDe(a.itemId))
+    arma = candidatas.length ? candidatas[0].itemId : null
+  }
+  if (arma) barra[0] = arma
+
+  // Ranura 9: la poción. La más floja que tenga, que es la que se
+  // querría gastar primero, igual que elige el combate por turnos.
+  const pociones = (char.inventory || [])
+    .filter(i => i && i.quantity > 0 && esConsumible(i.itemId))
+    .sort((a, b) => valorDe(a.itemId) - valorDe(b.itemId))
+  if (pociones.length) barra[9] = pociones[0].itemId
+
+  return barra
+}
+
+function valorDe(itemId) {
+  const t = typeof template === 'function' ? template(itemId) : null
+  return (t && t.value) || 0
+}
+function esConsumible(itemId) {
+  return typeof usableEnCombate === 'function' ? !!usableEnCombate(itemId) : false
+}
+
+// Devuelve la barra del personaje, creándola si no la tiene. Todo el
+// resto del código pasa por aquí y nadie lee char.hotbar a pelo.
+function barraDe(char) {
+  if (!char) return { hotbar: new Array(BARRA_RANURAS).fill(null), ranuraActiva: 0 }
+  if (!Array.isArray(char.hotbar) || char.hotbar.length !== BARRA_RANURAS) {
+    char.hotbar = sembrarBarra(char)
+  }
+  // Una barra guardada puede traer basura si alguien tocó el archivo.
+  for (let i = 0; i < BARRA_RANURAS; i++) {
+    if (char.hotbar[i] != null && !puedeIrEnBarra(char.hotbar[i])) char.hotbar[i] = null
+  }
+  if (!ranuraValida(char.ranuraActiva)) char.ranuraActiva = 0
+  return { hotbar: char.hotbar, ranuraActiva: char.ranuraActiva }
+}
+
+// ── Las operaciones ────────────────────────────────────────────────
+// Devuelven { error, code } como el resto del servidor. No persisten:
+// de eso se encarga quien las llame, que es quien sabe si hubo cambio.
+
+function asignarEnBarra(char, ranura, itemId) {
+  if (!char) return { error: 'Sin personaje', code: 400 }
+  if (!ranuraValida(ranura)) return { error: 'Ranura fuera de la barra', code: 400 }
+  const { hotbar } = barraDe(char)
+
+  if (itemId == null) { hotbar[ranura] = null; return { hotbar, ranuraActiva: char.ranuraActiva } }
+  if (typeof itemId !== 'string') return { error: 'Objeto inválido', code: 400 }
+  if (!puedeIrEnBarra(itemId)) {
+    return { error: 'En la barra solo caben armas y consumibles', code: 400 }
+  }
+  // Tiene que ser suyo. Pedir un objeto que no está en el inventario no
+  // lo crea: la misma regla que el combate por turnos.
+  const tiene = (char.inventory || []).some(i => i && i.itemId === itemId)
+  if (!tiene) return { error: 'No tienes ese objeto', code: 400 }
+
+  // El mismo objeto no puede estar en dos ranuras: se MUEVE.
+  const antes = hotbar.indexOf(itemId)
+  if (antes !== -1 && antes !== ranura) hotbar[antes] = null
+  hotbar[ranura] = itemId
+  return { hotbar, ranuraActiva: char.ranuraActiva }
+}
+
+function moverEnBarra(char, desde, hasta) {
+  if (!char) return { error: 'Sin personaje', code: 400 }
+  if (!ranuraValida(desde) || !ranuraValida(hasta)) {
+    return { error: 'Ranura fuera de la barra', code: 400 }
+  }
+  const { hotbar } = barraDe(char)
+  const t = hotbar[desde]
+  hotbar[desde] = hotbar[hasta]
+  hotbar[hasta] = t
+  return { hotbar, ranuraActiva: char.ranuraActiva }
+}
+
+// Cambiar de ranura NO cancela el golpe en curso: se apunta y lo aplica
+// quien lleve el reloj, al terminar la recuperación. Aquí solo se
+// registra la intención; el golpe vive en 59-combate-vivo.js.
+function elegirRanura(char, ranura) {
+  if (!char) return { error: 'Sin personaje', code: 400 }
+  if (!ranuraValida(ranura)) return { error: 'Ranura fuera de la barra', code: 400 }
+  barraDe(char)
+  char.ranuraActiva = ranura
+  return { hotbar: char.hotbar, ranuraActiva: ranura }
+}
+
+// Qué hay en la ranura activa, resuelto contra el inventario de AHORA.
+// La cantidad no se guarda: se cuenta. Así una ranura nunca miente.
+function ranuraResuelta(char, ranura) {
+  const { hotbar } = barraDe(char)
+  const i = ranuraValida(ranura) ? ranura : char.ranuraActiva
+  const itemId = hotbar[i]
+  if (!itemId) return { ranura: i, itemId: null, cantidad: 0, vacia: true }
+  const t = typeof template === 'function' ? template(itemId) : null
+  const filas = (char.inventory || []).filter(x => x && x.itemId === itemId)
+  const cantidad = filas.reduce((a, x) => a + (x.quantity || 0), 0)
+  return {
+    ranura: i, itemId,
+    nombre: (t && t.name) || itemId,
+    icono: (t && t.icon) || null,
+    imagen: (t && t.imagen) || null,
+    rareza: (t && t.rarity) || 'COMMON',
+    // Un arma es lo que se empuña; un consumible es lo que se bebe.
+    clase: (typeof ARMAS === 'object' && ARMAS[itemId]) || (t && t.slot === 'weapon') ? 'arma' : 'consumible',
+    apilable: esConsumible(itemId),
+    cantidad,
+    // Sin existencias: se pinta en gris, pero la ranura RECUERDA.
+    agotada: cantidad === 0,
+    uid: (filas[0] || {}).uid || null,
+  }
+}
+
+function barraResuelta(char) {
+  const { ranuraActiva } = barraDe(char)
+  const fuera = []
+  for (let i = 0; i < BARRA_RANURAS; i++) fuera.push(ranuraResuelta(char, i))
+  return { hotbar: fuera, ranuraActiva }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  ESTADO VIVO DEL COMBATE EN EL MUNDO (FASE B.4)
+//
+//  El encargo lista `golpe`, `invulnerableHasta`, `ultimoCombateEn` y
+//  `bloqueando` como campos del personaje, y añade que NO se guardan.
+//
+//  Aquí no están en el personaje, y ese es el desvío. El motivo es
+//  concreto: snapshotOf() vuelca `store.players` entero
+//  (10-infra.js:108). Un campo que vive dentro de algo que se guarda y
+//  que "no se guarda" solo se cumple mientras alguien se acuerde de
+//  quitarlo a mano, y en cuanto se olvide, un reinicio revivirá a un
+//  jugador a medio golpe y con invulnerabilidad de hace tres días.
+//
+//  Viviendo en un Map aparte, "no se guarda" deja de ser una regla y
+//  pasa a ser un hecho. Es el mismo patrón que ya usan la presencia del
+//  mundo (`mundo` en 54-mundo-vivo.js) y las partidas de arena.
+//
+//  Y trae dos cosas gratis: reiniciar el servidor te deja FUERA de
+//  combate, que es lo correcto, y quien se desconecta suelta su estado.
+// ═══════════════════════════════════════════════════════════════════
+
+const VIVO = new Map()   // username → estado vivo
+
+// Cuánto hace falta sin dar ni recibir daño para considerarte fuera de
+// combate en el mundo (sección C.7 del encargo). El ritmo de
+// recuperación NO cambia: sigue en 1 % cada 1.500 ms.
+const FUERA_COMBATE_MS = 5000
+
+function vivoNuevo() {
+  return {
+    golpe: null,              // { ranura, inicio, desde, hasta, dirX, dirY, tocados: [] }
+    invulnerableHasta: 0,
+    ultimoCombateEn: 0,
+    bloqueando: false,
+    ranuraPedida: null,       // cambio de ranura en espera: no corta el golpe
+    proxGolpe: 0,
+    proxPocion: 0,
+  }
+}
+
+function vivoDe(username) {
+  if (!username) return vivoNuevo()
+  let v = VIVO.get(username)
+  if (!v) { v = vivoNuevo(); VIVO.set(username, v) }
+  return v
+}
+
+function vivoOlvidar(username) { VIVO.delete(username) }
+
+// Marca que acabas de dar o recibir daño en el mundo. Es lo único que
+// mueve el reloj del descanso.
+function marcarCombate(username, ahora) {
+  if (!username) return
+  vivoDe(username).ultimoCombateEn = Number.isFinite(ahora) ? ahora : now()
+}
+
+// ¿Peleando ahora mismo en el mundo? La condición del STEP 18 se amplía
+// con esto, pero NO se sustituye: batalla por turnos, arena y mazmorra
+// siguen contando, y se comprueban donde siempre (60-http.js:217).
+function enCombateMundo(username, ahora) {
+  const v = VIVO.get(username)
+  if (!v || !v.ultimoCombateEn) return false
+  const t = Number.isFinite(ahora) ? ahora : now()
+  return (t - v.ultimoCombateEn) < FUERA_COMBATE_MS
+}
+
+// Limpieza: quien lleva media hora sin aparecer no necesita que le
+// guardemos un golpe a medias. Sin esto el Map crece para siempre.
+const VIVO_OLVIDO_MS = 30 * 60 * 1000
+setInterval(() => {
+  const t = now()
+  for (const [u, v] of VIVO) {
+    const ultimo = Math.max(v.ultimoCombateEn || 0, v.proxGolpe || 0)
+    if (t - ultimo > VIVO_OLVIDO_MS) VIVO.delete(u)
+  }
+}, 60_000).unref?.()
 
 
 // ═══════════════════════════════════════════════════════════════════

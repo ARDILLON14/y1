@@ -175,12 +175,18 @@ tres caen al valor por defecto, `{x:0.79, y:0.79}` y `-2.356 rad`.
 
 **Reparto por tipo, con el catálogo de hoy:**
 
-| Tipo del encargo | Armas reales | |
+| Tipo del encargo | Armas | Cuáles |
 |---|---|---|
-| espada | 6 | puños, sword_alba, espada_piedra, espada_hierro, espada_diamante, frost_blade |
-| lanza | 3 | iron_spear (`estocada`), wood_club e iron_axe (`tajo_alto`), dagger (`pinchazo`) — 4 si se cuenta la daga |
-| arco | 2 | short_bow, elven_bow |
-| magia | 2 | crystal_wand, thunder_staff |
+| espada | **9** | puños, dagger, sword_alba, espada_piedra, espada_hierro, espada_diamante, wood_club, iron_axe, frost_blade |
+| lanza | **1** | iron_spear |
+| arco | **2** | short_bow, elven_bow |
+| magia | **2** | crystal_wand, thunder_staff |
+
+> **Corregido en la FASE B.** En la primera versión repartí el hacha, el
+> garrote y la daga en «lanza» porque tienen gesto propio. Es al revés: el
+> `gesto` dice cómo se DIBUJA el golpe y el `tipoUso` dice qué FORMA tiene
+> el impacto. Los tres pegan en sector, igual que una espada; la única que
+> cambia de forma es la estocada. Nueve, una, dos y dos.
 
 **Los cuatro tipos se pueden usar hoy.** Lo único que no existe es el
 **gasto de maná**: ninguna arma tiene `costeMp` y las dos «mágicas» cuestan
@@ -345,13 +351,32 @@ el equilibrio, es otro encargo con su medición.
 
 ### D2 · `arco` está en radianes y es SEMI-apertura, no grados totales
 
+> **Corregido en la FASE B.** En la primera versión de esta sección escribí
+> que aplicar los 120° del encargo recortaría el barrido «a menos de un
+> tercio». Hice mal la conversión. El recorte real es al **65 %**. Lo demás
+> de este punto se mantiene, y sigue chocando con R2.
+
 `resolverGolpe` compara `dif > arma.arco` con `dif` en radianes
-(`58-arena.js:719`). `arco: 1.6` son ±92°, es decir **183° totales**. Los
-120° totales del encargo son `arco: 0.52`. Aplicarlo tal cual recortaría el
-barrido de las espadas a **menos de un tercio**.
-**Propongo** · mantener radianes y semi-apertura. Si se añade un campo en
-grados al catálogo público, que se llame distinto (`arcoGrados`) y se
-convierta en un solo sitio.
+(`58-arena.js:719`), así que `arco` es la **semi-apertura**:
+
+| | rad (semi) | grados totales |
+|---|---|---|
+| espada de hoy (`arco: 1.6`) | 1,600 | **183,3°** |
+| lo que pide el encargo | 1,047 | 120° |
+| lanza de hoy (`arco: 0.5`) | 0,500 | **57,3°** |
+| lo que pide el encargo | 0,262 | 30° |
+
+O sea: las espadas barrerían el **65 %** de lo que barren hoy y la lanza el
+**52 %**. Es menos brutal de lo que escribí, pero sigue siendo un cambio de
+equilibrio, y R2 dice que ahí me pare.
+
+Y el peligro de verdad no es la magnitud: es que `arco: 120` leído tal cual
+son **120 radianes**, o sea que el arma acierta en cualquier dirección,
+incluso a la espalda. Un solo despiste con las unidades y el juego deja de
+tener frente.
+
+**Propongo** · mantener radianes y semi-apertura dentro. Si se expone un
+campo en grados, que se llame `arcoGrados` y se convierta en un solo sitio.
 
 ### D3 · `retroceso` no se mide en píxeles
 
