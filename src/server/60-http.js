@@ -216,7 +216,13 @@ async function handleAPI(req, res, pathname, query) {
   // batalla por turnos abierta, una partida de arena o una mazmorra.
   if (char) {
     const enTurnos = Object.values(store.battles).some(b => b.owner === char.id && b.state === 'ACTIVE')
-    regenerarFuera(char, enTurnos || partidas.has(p.username) || runs.has(p.username))
+    // La condición del STEP 18 se AMPLÍA, no se sustituye: batalla por
+    // turnos, arena y mazmorra siguen contando igual, y ahora también
+    // haber dado o recibido daño en el mundo hace menos de 5 s (C.7).
+    // Sin esto, con el combate en tiempo real se regeneraría entre
+    // mordisco y mordisco.
+    const enMundo = typeof enCombateMundo === 'function' && enCombateMundo(p.username)
+    regenerarFuera(char, enTurnos || enMundo || partidas.has(p.username) || runs.has(p.username))
   }
 
   // ══════════ PRIMEROS PASOS ══════════
@@ -607,7 +613,26 @@ async function handleAPI(req, res, pathname, query) {
   }
   if (pathname === '/api/mundo/salir' && req.method === 'POST') {
     salirDelMundo(p.username)
+    if (typeof olvidarDelMundoCombate === 'function') olvidarDelMundoCombate(p.username)
     return json(res, { success: true })
+  }
+
+  // ── Combate en tiempo real en el mundo (FASE C.8) ────────────────
+  //
+  // El mismo trato que la arena: el pulso DEPOSITA intención y RECOGE
+  // lo que dejó el último paso de 100 ms. No resuelve nada aquí dentro,
+  // porque si lo resolviera, pulsar más veces por segundo pegaría más.
+  //
+  // Va por socket cuando lo hay (55-tiempo-real.js) y por HTTP cuando
+  // no, igual que el STEP 6: la v29 y la v30 se fueron en diagnosticar
+  // "entro y no me puedo mover" y el problema estaba fuera del código.
+  if (pathname === '/api/mundo/combate' && req.method === 'POST') {
+    // La posición sigue mandándose por el mismo sitio de siempre; si
+    // viene en el mismo cuerpo, se aprovecha el viaje.
+    if (body.pos) moverEnMundo(p.username, body.pos)
+    const r = entradaMundo(p.username, body.entrada || {})
+    if (r && r.error) return fail(res, r.error, r.code || 400)
+    return json(res, estadoMundoDe(p.username))
   }
 
   if (pathname === '/api/recursos' && req.method === 'GET') {

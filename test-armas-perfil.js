@@ -37,7 +37,7 @@ function cargar(extra) {
   }
   ctx.globalThis = ctx
   vm.createContext(ctx)
-  const mods = ['30-personajes-combate.js', '58-arena.js', '59-armas-perfil.js', '59-barra.js']
+  const mods = ['30-personajes-combate.js', '31-turnos.js', '57-golpe.js', '58-arena.js', '59-armas-perfil.js', '59-barra.js']
   for (const f of mods) {
     vm.runInContext(fs.readFileSync(path.join(__dirname, 'src', 'server', f), 'utf8'), ctx, { filename: f })
   }

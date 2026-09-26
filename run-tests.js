@@ -61,6 +61,7 @@ const PRUEBAS = [
   // un contexto aislado y prueban funciones puras. El puerto que se les
   // pasa no lo usan, pero la tabla es una sola y así sigue siéndolo.
   ['test-armas-perfil', 3897], ['test-barra-datos', 3898],
+  ['test-mundo-tiempo-real', 3899],
 ]
 
 // Estas miden TIEMPO: duraciones de animación, ventanas de golpe,

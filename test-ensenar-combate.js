@@ -106,8 +106,18 @@ async function run() {
     JSON.stringify(troll && { hp: troll.hp, nivel: troll.level }))
   check('la araña sigue igual', arana && arana.hp === 285 && arana.level === 3,
     JSON.stringify(arana && { hp: arana.hp, nivel: arana.level }))
+  // El 30 % dejó de ser un literal suelto y pasó a ser una constante
+  // con nombre, porque el combate en tiempo real del mundo bloquea con
+  // la MISMA reducción y dos treintas por ciento escritos en dos sitios
+  // son dos números que un día dejarán de ser el mismo. Lo que esta
+  // comprobación defiende es el número, no cómo esté escrito.
   const cod = fs.readFileSync(path.join(__dirname, 'src', 'server', '30-personajes-combate.js'), 'utf8')
-  check('bloquear sigue encajando el 30 % del golpe', /dmg = Math\.floor\(dmg \* 0\.3\)/.test(cod))
+  check('bloquear sigue encajando el 30 % del golpe',
+    /const REDUCCION_BLOQUEO = 0\.3\b/.test(cod) &&
+    /dmg = Math\.floor\(dmg \* REDUCCION_BLOQUEO\)/.test(cod))
+  const mundo = fs.readFileSync(path.join(__dirname, 'src', 'server', '59-mundo-combate.js'), 'utf8')
+  check('y el mundo en tiempo real bloquea con esa misma constante',
+    /REDUCCION_BLOQUEO/.test(mundo))
 
   console.log('\n══════════════════════════════════════════════')
   console.log(`  ${pass} OK · ${failed} fallidas`)

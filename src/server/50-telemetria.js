@@ -24,6 +24,10 @@ const FUNNEL_STEPS = [
   // tutorial no las mencionaba, así que la dificultad del juego no
   // estaba en sus números sino en dos mecánicas que nadie te cuenta.
   'register', 'first_combat', 'first_block', 'first_potion', 'first_kill', 'level_2', 'first_quest_accept',
+  // El mundo en tiempo real (FASE C): el primer golpe que das ahí y el
+  // primer cambio de arma con la barra. step() ignora lo que no esté en
+  // esta lista, así que emitirlos sin añadirlos aquí sería no medir nada.
+  'first_world_hit', 'first_hotbar_switch',
   'first_craft', 'first_quest_complete', 'level_5', 'first_market_buy',
   'first_gather', 'first_harvest', 'first_arena',
   'first_dungeon', 'first_pvp', 'level_10', 'day_2_return',

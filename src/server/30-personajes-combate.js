@@ -577,6 +577,13 @@ const ESCALA_TURNOS = { vida: 1.6, daño: 1.4, seguimiento: 1 }
 // qué monstruo puede pelear cada quién.
 const CURA_AL_MORIR = 0.5
 
+// Cuánto queda de un golpe anunciado cuando lo bloqueas: el 30 %. Era un
+// 0.3 suelto dentro del combate por turnos. Ahora es una constante
+// porque el mundo en tiempo real bloquea con la MISMA reducción, y dos
+// treintas por ciento escritos en dos sitios son dos números que un día
+// dejarán de ser el mismo.
+const REDUCCION_BLOQUEO = 0.3
+
 // ── Recuperarse fuera de combate ───────────────────────────────────
 //
 // No existía NINGUNA forma de recuperar vida salvo morir, y eso no es
@@ -866,7 +873,7 @@ function combatAction(char, battle, action, skillId, itemId) {
       const raw = (randInt(m.atk[0], m.atk[1]) + m.level * 2) * battle.telegraph.mult * phaseMult * escalaDaño(battle)
       let dmg = Math.max(1, Math.floor(raw * (1 - Math.min(0.7, (st.defense * (1 + defBuff)) / 250))))
       if (battle.blocking) {
-        dmg = Math.floor(dmg * 0.3)
+        dmg = Math.floor(dmg * REDUCCION_BLOQUEO)
         log.push(`¡Bloqueaste ${battle.telegraph.name}!`)
         // Se dice con un campo y no solo con una frase del registro: el
         // tutorial tiene que poder saber que el jugador APRENDIÓ a

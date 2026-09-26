@@ -225,21 +225,33 @@ async function run() {
   // Las ventanas salen de la cadencia del arma, así que comparar dos
   // armas es comparar dos cadencias. Se lee del propio código para no
   // depender de tener las dos armas en el inventario.
-  const src = require('fs').readFileSync(path.join(__dirname, 'src/server/58-arena.js'), 'utf8')
+  // Se busca en TODO el servidor, no en un archivo concreto. Desde la
+  // FASE C.1 las fases viven en 57-golpe.js, compartidas con el mundo en
+  // tiempo real, y esta comprobación se puso roja sin que el juego
+  // hubiera cambiado. Lo que defiende sigue siendo lo mismo: que las
+  // ventanas salgan de la cadencia y sumen exactamente la cadencia.
+  const fsp = require('fs')
+  const dirServidor = path.join(__dirname, 'src', 'server')
+  const src = fsp.readdirSync(dirServidor).filter(f => f.endsWith('.js')).sort()
+    .map(f => fsp.readFileSync(path.join(dirServidor, f), 'utf8')).join('\n')
   ok('las ventanas se derivan de la cadencia', /c \* 0\.30/.test(src) && /c \* 0\.22/.test(src))
-  const m = src.match(/function ventanasDe\(arma\) \{[\s\S]*?\n\}/)
+  const m = src.match(/function fasesDeGolpe\(cadenciaMs\) \{[\s\S]*?\n\}/)
   ok('la función existe', !!m)
   if (m) {
-    const ventanasDe = new Function('limitar', 'return ' + m[0])((v, a, b) => v < a ? a : v > b ? b : v)
-    const daga = ventanasDe({ cadenciaMs: 300 })
-    const cetro = ventanasDe({ cadenciaMs: 620 })
+    const fases = new Function('limitar', 'return ' + m[0])((v, a, b) => v < a ? a : v > b ? b : v)
+    const daga = fases(300)
+    const cetro = fases(620)
     ok('el cetro se anticipa más que la daga',
        cetro.anticipacion > daga.anticipacion, JSON.stringify({ daga, cetro }))
     ok('los tres tiempos suman la cadencia de la daga',
-       daga.anticipacion + daga.activo + daga.recuperacion === 300, JSON.stringify(daga))
+       daga.anticipacion + daga.activa + daga.recuperacion === 300, JSON.stringify(daga))
     ok('y los del cetro también',
-       cetro.anticipacion + cetro.activo + cetro.recuperacion === 620, JSON.stringify(cetro))
-    ok('ninguna ventana activa es cero', daga.activo > 0 && cetro.activo > 0)
+       cetro.anticipacion + cetro.activa + cetro.recuperacion === 620, JSON.stringify(cetro))
+    ok('ninguna ventana activa es cero', daga.activa > 0 && cetro.activa > 0)
+    // Y la arena la sigue viendo con el nombre que usan sus pruebas.
+    const mv = src.match(/function ventanasDe\(arma\) \{[\s\S]*?\n\}/)
+    ok('la arena traduce "activa" a su "activo" sin cambiar los números',
+       !!mv && /activo: f\.activa/.test(mv[0]))
   }
 
   console.log('\n' + '═'.repeat(46) + '\n  ' + pass + ' OK · ' + fail + ' fallidas\n' + '═'.repeat(46) + '\n')

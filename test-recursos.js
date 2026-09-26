@@ -266,7 +266,13 @@ async function run() {
   console.log('\n── §5 HOTBAR ──')
   r = await req('GET', '/api/hotbar')
   check('la hotbar existe', r.status === 200 && Array.isArray(r.body.ranuras), r.raw.slice(0, 80))
-  check('tiene 8 ranuras', r.body.ranuras.length === 8)
+  // Diez desde la FASE B del encargo de combate: la barra se maneja con
+  // las teclas 1–0 y eso son diez. Es la ÚNICA expectativa que ha
+  // cambiado al unificar las dos barras que había, y cambia porque el
+  // encargo lo pide, no porque se haya roto nada: las ocho primeras
+  // siguen valiendo para lo mismo y una partida guardada de antes se
+  // migra conservando lo que tuviera.
+  check('tiene 10 ranuras', r.body.ranuras.length === 10, String(r.body.ranuras.length))
 
   const semilla = (await inv()).inventory.find(i => i.type === 'SEED')
   r = await req('POST', '/api/hotbar', { ranura: 0, uid: semilla.uid })

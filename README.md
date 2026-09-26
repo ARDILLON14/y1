@@ -25,6 +25,8 @@ Lo que **no** es: no hay token desplegado ni NFTs. `$CGRID` es un saldo interno 
 | `npm run test:serie` | Lo mismo de una en una (~450 s), para comparar cuando algo huele a carga |
 | `npm run doctor` | Diagnóstico priorizado de qué mejorar |
 | `npm run arte` | Qué dibujos faltan, con nombre y medidas, y cuáles están mal |
+| `npm run mundo` | Qué cuesta pelear en el mundo en tiempo real, medido |
+| `npm run latencia` | De pulsar a verlo, con uno y con cuatro jugadores |
 | `npm run simular` | Cohorte de jugadores automatizados |
 | `npm run carga` | Prueba de carga (mide el techo del servidor) |
 | `npm run estabilidad` | Comprueba que nada crece sin techo (~90 s) |
@@ -68,7 +70,7 @@ Lo que **no** es: no hay token desplegado ni NFTs. `$CGRID` es un saldo interno 
 
 ## Estado del proyecto
 
-**Hecho:** servidor con autoridad total, doce módulos de juego (con arena en tiempo real, recolección y huerto), creador de personaje con siete aspectos (uno animado), telemetría con embudo y retención, economía pública auditable, chat y presencia en tiempo real por WebSocket, copias de seguridad con recuperación automática, beta cerrada por invitación, interfaz y controles táctiles para móvil, recuperación ante caídas de red, y 1.459 comprobaciones automatizadas repartidas en 55 archivos de prueba.
+**Hecho:** servidor con autoridad total, doce módulos de juego (con arena en tiempo real, recolección y huerto), creador de personaje con siete aspectos (uno animado), telemetría con embudo y retención, economía pública auditable, chat y presencia en tiempo real por WebSocket, copias de seguridad con recuperación automática, beta cerrada por invitación, interfaz y controles táctiles para móvil, recuperación ante caídas de red, y 1.489 comprobaciones automatizadas repartidas en 56 archivos de prueba.
 
 **Pendiente:** PostgreSQL (las migraciones están escritas; medido, el JSON aguanta 300 jugadores simultáneos con 44 ms), guerras de gremio, integración on-chain.
 

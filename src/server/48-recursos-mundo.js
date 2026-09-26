@@ -406,70 +406,18 @@ function golpearRecurso(char, nodoId, posicion, usuario) {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-//  §5 HOTBAR — acceso rápido conectado al inventario REAL
+//  §5 HOTBAR — se mudó a 59-barra.js
 //
-//  No guarda objetos: guarda referencias (uid) a los que ya están en
-//  el inventario. Si el objeto se gasta o se vende, la ranura se
-//  queda vacía sola. Así no puede existir una segunda copia falsa del
-//  inventario, que es justo lo que pedía evitarse.
+//  Estaba aquí porque nació para la recolección: acceso rápido al hacha
+//  y al pico. La FASE B del encargo de combate pedía una barra de
+//  objetos y yo escribí una segunda sin ver esta, sobre el MISMO campo
+//  `char.hotbar`. No reventó nada porque la mía nacía inerte, pero eran
+//  dos sistemas peleándose por un array: uno lo quería de 8 uids y el
+//  otro de 10 itemId.
+//
+//  Ahora hay una sola, en 59-barra.js, con los mismos nombres
+//  (verHotbar, ponerEnHotbar, seleccionarRanura) y la misma respuesta,
+//  para que ni los endpoints ni las pruebas de recolección se enteren.
 // ═══════════════════════════════════════════════════════════════════
-const HOTBAR_RANURAS = 8
 
-function hotbarDe(char) {
-  if (!Array.isArray(char.hotbar) || char.hotbar.length !== HOTBAR_RANURAS) {
-    char.hotbar = new Array(HOTBAR_RANURAS).fill(null)
-  }
-  // Limpieza: referencias a objetos que ya no existen
-  char.hotbar = char.hotbar.map(uid =>
-    uid && (char.inventory || []).some(i => i.uid === uid) ? uid : null)
-  return char.hotbar
-}
 
-function verHotbar(char) {
-  const uids = hotbarDe(char)
-  return {
-    ranuras: uids.map(uid => {
-      if (!uid) return null
-      const i = (char.inventory || []).find(x => x.uid === uid)
-      if (!i) return null
-      const t = template(i.itemId) || {}
-      return {
-        uid, itemId: i.itemId, nombre: t.name || i.name, icono: t.icon || i.icon,
-        imagen: t.imagen || null,
-        rareza: t.rarity || i.rarity, tipo: t.type || i.type,
-        cantidad: i.quantity, equipable: !!t.slot, slot: t.slot || null,
-        consumible: !!(t.heal || t.mana || t.buff),
-        equipado: isEquipped(char, uid),
-        durabilidad: i.durabilidad != null ? i.durabilidad : null,
-      }
-    }),
-    seleccionada: char.hotbarSel || 0,
-  }
-}
-
-function ponerEnHotbar(char, ranura, uid) {
-  const r = intIn(ranura, 0, HOTBAR_RANURAS - 1, null)
-  if (r === null) return { error: 'Ranura inválida', code: 400 }
-  hotbarDe(char)
-  if (uid === null || uid === undefined || uid === '') {
-    char.hotbar[r] = null
-    persist()
-    return { success: true, hotbar: verHotbar(char) }
-  }
-  if (!(char.inventory || []).some(i => i.uid === uid)) {
-    return { error: 'Ese objeto no está en tu inventario', code: 404 }
-  }
-  // Un mismo objeto no puede ocupar dos ranuras
-  char.hotbar = char.hotbar.map(x => (x === uid ? null : x))
-  char.hotbar[r] = uid
-  persist()
-  return { success: true, hotbar: verHotbar(char) }
-}
-
-function seleccionarRanura(char, ranura) {
-  const r = intIn(ranura, 0, HOTBAR_RANURAS - 1, null)
-  if (r === null) return { error: 'Ranura inválida', code: 400 }
-  char.hotbarSel = r
-  persist()
-  return { success: true, seleccionada: r, hotbar: verHotbar(char) }
-}

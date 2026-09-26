@@ -148,6 +148,13 @@ function wsHandleMessage(client, raw) {
 
   // Entradas del combate en tiempo real. Se sanean en entradaArena().
   if (msg.type === 'arena_entrada') { entradaArena(client.username, msg.entrada || {}); return }
+  // El combate del mundo, por el mismo carril que el de la arena.
+  if (msg.type === 'mundo_combate') {
+    if (msg.pos) moverEnMundo(client.username, msg.pos)
+    entradaMundo(client.username, msg.entrada || {})
+    wsSend(client, { type: 'mundo_combate', estado: estadoMundoDe(client.username) })
+    return
+  }
   if (msg.type === 'arena_abandonar') {
     const fin = abandonarArena(client.username)
     if (fin) wsSend(client, { type: 'arena_fin', ...fin })

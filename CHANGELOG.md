@@ -4,6 +4,49 @@ Cada versión con lo que la motivó. Los detalles completos están en `docs/CAMB
 
 ## v33 (en curso) — Combate estilo Terraria y barra de objetos
 
+### Los monstruos del mapa ya son del servidor, y los mismos para todos
+
+Hasta ahora los inventaba el navegador. Cada jugador colocaba los suyos
+donde le salía, y dos personas en el mismo bosque veían arañas distintas y
+no podían pelear con la misma. Ahora son del servidor, compartidos por
+zona, con su vida y su posición decididas ahí, a cien pasos por segundo,
+con el mismo motor que la arena.
+
+El motor, por cierto, ya existía: las fases del golpe, el sector de
+alcance y arco, «un golpe toca una vez», el retroceso y la separación de
+cuerpos vivían dentro de la arena y no tenían nada de arena. Ahora son un
+módulo compartido. La extracción no cambió ni un número.
+
+### Bloquear era imposible, y lo dijo la medición
+
+El aviso del golpe salía de la tabla en 300 milisegundos. Medido, ver el
+gesto ya cuesta 121 ms y otro tanto tarda en llegar tu respuesta: al
+jugador le quedaban menos de 60 ms para decidir. O sea que una de las dos
+mecánicas que deciden el juego —lo demostró el banco de balance— no
+existía en el mundo nuevo.
+
+Ahora el suelo son 500 ms, que no es un número redondo: es 121 de ver, más
+250 de reaccionar, más 121 de que llegue. Antes del cambio, una pelea
+bloqueando registraba **cero** bloqueos. Después registra dos y ahorra el
+77 % de la vida, idéntico en dos tiradas.
+
+### Había dos barras de objetos, y una era mía
+
+`/api/hotbar` existía desde el sistema de recolección: ocho ranuras para
+tener a mano el hacha y el pico. Al hacer la barra que pedía el encargo
+escribí una segunda sobre el mismo campo, con diez ranuras y otro formato.
+No rompió nada porque nacía apagada, pero en cuanto se hubiera encendido,
+cada petición habría tenido a los dos sistemas rehaciéndose el array el
+uno al otro.
+
+Mi propia auditoría no lo vio: repasé nueve puntos del combate y en
+ninguno pregunté si ya existía algo parecido a lo que iba a construir.
+
+Ahora hay una sola, y se queda con lo mejor de cada una. De la vieja, que
+en la barra quepa todo lo que tengas y no solo armas: nació para las
+herramientas y eso no se rompe. De la nueva, que la ranura recuerde lo que
+iba en ella, para que beberte la última poción no te borre el hueco.
+
 ### La auditoría dijo que medio motor ya estaba escrito, en el sitio equivocado
 
 Antes de tocar nada se releyó el encargo punto por punto contra el código.

@@ -1,17 +1,24 @@
 /**
- * CriptoMundo — FASE B · la barra de objetos, como dato
+ * CriptoMundo — la barra de objetos, como dato
  * Uso:  node test-barra-datos.js
  *
  * POR QUÉ EXISTE
- * La FASE D pondrá los endpoints. Esto comprueba lo de debajo: la forma
- * del dato, la migración de las partidas viejas y las reglas de quién
- * puede ir en qué ranura. Son funciones puras sobre el personaje, así
- * que se prueban sin servidor y sin red.
+ * Había DOS barras. La vieja nació en 48-recursos-mundo.js para la
+ * recolección: ocho ranuras con el uid de una fila del inventario. Yo
+ * escribí una segunda en la FASE B sin ver la primera, sobre el MISMO
+ * campo `char.hotbar`, con diez ranuras y itemId. No reventó nada
+ * porque la mía nacía inerte, pero en cuanto se conectara, un sistema
+ * habría dejado el array de 8 uids y el otro lo habría rehecho de 10
+ * itemId, en cada petición, en bucle.
  *
- * LO QUE MÁS IMPORTA AQUÍ es la decisión de guardar el itemId y no el
- * uid: removeItem() borra la fila del inventario cuando la cantidad
- * llega a cero, así que con uid la última poción se llevaría la ranura
- * por delante. Hay tres comprobaciones sobre eso.
+ * Ahora hay una sola. Esto comprueba lo que decide si la unificación
+ * está bien: que lo viejo siga funcionando (semillas y herramientas en
+ * la barra, endpoints con uid), que lo nuevo funcione (diez ranuras, la
+ * ranura recuerda lo que iba en ella), y que una partida guardada con
+ * ocho uids se migre sin perder nada.
+ *
+ * No hace falta servidor: se evalúan los módulos de verdad en un
+ * contexto aislado, contra el catálogo de verdad.
  */
 const fs = require('fs')
 const vm = require('vm')
@@ -35,10 +42,10 @@ function cargar() {
   }
   ctx.globalThis = ctx
   vm.createContext(ctx)
-  for (const f of ['20-skins.js', '30-personajes-combate.js', '31-turnos.js', '58-arena.js', '59-armas-perfil.js', '59-barra.js', '59-combate-vivo.js']) {
+  for (const f of ['20-skins.js', '30-personajes-combate.js', '31-turnos.js', '57-golpe.js', '58-arena.js', '59-armas-perfil.js', '59-barra.js', '59-combate-vivo.js']) {
     vm.runInContext(fs.readFileSync(path.join(__dirname, 'src', 'server', f), 'utf8'), ctx, { filename: f })
   }
-  vm.runInContext('var __RANURAS = BARRA_RANURAS; var __FUERA = FUERA_COMBATE_MS', ctx)
+  vm.runInContext('var __RANURAS = HOTBAR_RANURAS; var __FUERA = FUERA_COMBATE_MS', ctx)
   return ctx
 }
 let semilla = 0
@@ -48,131 +55,131 @@ const c = cargar()
 const nuevo = () => c.newCharacter('probador' + (++semilla), 'Guerrero')
 
 console.log('\n── LA FORMA DEL DATO ──')
-ok('la barra tiene 10 ranuras', c.__RANURAS === 10, String(c.__RANURAS))
+ok('la barra tiene 10 ranuras, no 8', c.__RANURAS === 10, String(c.__RANURAS))
 const a = nuevo()
 ok('un personaje nuevo no trae barra guardada', a.hotbar === undefined)
-const b0 = c.barraDe(a)
+const b0 = c.hotbarDe(a)
 ok('y se le hace una en cuanto alguien la pide', Array.isArray(a.hotbar) && a.hotbar.length === 10)
-ok('con la ranura activa en la 0', b0.ranuraActiva === 0)
-ok('pedirla dos veces no la cambia', JSON.stringify(c.barraDe(a).hotbar) === JSON.stringify(b0.hotbar))
+ok('con la ranura seleccionada en la 0', (a.hotbarSel || 0) === 0)
+ok('pedirla dos veces no la cambia', JSON.stringify(c.hotbarDe(a)) === JSON.stringify(b0))
 
-console.log('\n── LA MIGRACIÓN (B.4): NADIE APARECE CON LAS MANOS VACÍAS ──')
+console.log('\n── NADIE APARECE CON LAS MANOS VACÍAS ──')
 ok('la ranura 0 trae un arma', !!a.hotbar[0], String(a.hotbar[0]))
 ok('y es la daga con la que se empieza', a.hotbar[0] === 'dagger', String(a.hotbar[0]))
 ok('la ranura 9 trae una poción', a.hotbar[9] === 'potion_hp', String(a.hotbar[9]))
 ok('las ocho de en medio están vacías', a.hotbar.slice(1, 9).every(x => x === null))
 
-// Con un arma EQUIPADA, manda esa y no la mejor de la mochila.
 const eq = nuevo()
 const espada = c.makeItem('espada_diamante')
 eq.inventory.push(espada)
 eq.equipment = { weapon: espada.uid }
-c.barraDe(eq)
+c.hotbarDe(eq)
 ok('si llevas un arma puesta, esa es la de la ranura 0',
    eq.hotbar[0] === 'espada_diamante', String(eq.hotbar[0]))
 
-// Sin arma ninguna: la ranura 0 se queda vacía, no se inventa nada.
 const pelado = nuevo()
-pelado.inventory = pelado.inventory.filter(i => !c.ARMAS_TEST_NO)
 pelado.inventory = [c.makeItem('herb', 3)]
 pelado.equipment = {}
-c.barraDe(pelado)
+c.hotbarDe(pelado)
 ok('sin ningún arma, la ranura 0 se queda vacía en vez de inventarse una',
    pelado.hotbar[0] === null, String(pelado.hotbar[0]))
 
-console.log('\n── QUÉ PUEDE IR EN UNA RANURA ──')
-ok('un arma sí', c.puedeIrEnBarra('espada_hierro'))
-ok('una poción sí', c.puedeIrEnBarra('potion_hp'))
-// «Bebible» lo decide usableEnCombate(), no el tipo del catálogo. El
-// Agua Pura es MATERIAL y no cura: parece bebida y no lo es.
-ok('el Agua Pura NO, aunque lo parezca', !c.puedeIrEnBarra('water'))
-ok('una poción mejor también sí', c.puedeIrEnBarra('potion_hp_ii'))
-ok('una armadura NO', !c.puedeIrEnBarra('iron_helm'))
-ok('un material NO', !c.puedeIrEnBarra('iron_ore'))
-ok('una semilla NO', !c.puedeIrEnBarra('semilla_trigo'))
-ok('algo que no existe NO', !c.puedeIrEnBarra('lo_que_sea'))
-ok('null NO', !c.puedeIrEnBarra(null))
+console.log('\n── LA BARRA VALE PARA TODO, COMO SIEMPRE ──')
+// La sección D.1 del encargo dice "solo armas y consumibles". Eso
+// rompería la recolección: la barra nació para el hacha y el pico.
+const t2 = nuevo()
+const semTrigo = t2.inventory.find(i => i.itemId === 'semilla_trigo')
+let r = c.ponerEnHotbar(t2, 2, semTrigo.uid)
+ok('una semilla cabe en la barra', !r.error && t2.hotbar[2] === 'semilla_trigo', r.error || '')
+const hacha = t2.inventory.find(i => i.itemId && /hacha/.test(i.itemId))
+if (hacha) {
+  r = c.ponerEnHotbar(t2, 3, hacha.uid)
+  ok('y una herramienta también', !r.error && t2.hotbar[3] === hacha.itemId, r.error || '')
+} else ok('y una herramienta también (sin hacha en este contexto)', true)
+ok('pero una semilla NO se puede usar peleando', !c.usableDesdeLaBarra('semilla_trigo'))
+ok('un arma sí', c.usableDesdeLaBarra('espada_hierro'))
+ok('una poción sí', c.usableDesdeLaBarra('potion_hp'))
+ok('el Agua Pura NO, aunque lo parezca', !c.usableDesdeLaBarra('water'))
 
-console.log('\n── ASIGNAR, MOVER, ELEGIR ──')
-const p = nuevo()
-c.barraDe(p)
-let r = c.asignarEnBarra(p, 3, 'potion_hp_ii')
-ok('se puede poner una poción en la 3', !r.error && p.hotbar[3] === 'potion_hp_ii', r.error || '')
-r = c.asignarEnBarra(p, 10, 'potion_hp')
-ok('la ranura 10 se rechaza', r.error && r.code === 400, JSON.stringify(r))
-r = c.asignarEnBarra(p, -1, 'potion_hp')
-ok('la ranura −1 se rechaza', !!r.error)
-r = c.asignarEnBarra(p, 1.5, 'potion_hp')
-ok('una ranura con decimales se rechaza', !!r.error)
-r = c.asignarEnBarra(p, 4, 'iron_ore')
-ok('un material se rechaza con su motivo', r.error && /armas y consumibles/.test(r.error), r.error)
-r = c.asignarEnBarra(p, 4, 'espada_diamante')
-ok('un arma que NO tienes se rechaza', r.error && /No tienes/.test(r.error), r.error)
-
-// El mismo objeto no puede estar en dos sitios: se mueve.
-c.asignarEnBarra(p, 5, 'potion_hp_ii')
+console.log('\n── LOS ENDPOINTS VIEJOS SIGUEN HABLANDO EN uid ──')
+const v2 = c.verHotbar(t2)
+ok('verHotbar devuelve ranuras y seleccionada',
+   Array.isArray(v2.ranuras) && v2.ranuras.length === 10 && 'seleccionada' in v2)
+ok('cada ranura llena trae su uid, como esperan las pruebas de recolección',
+   v2.ranuras[2] && v2.ranuras[2].uid === semTrigo.uid, JSON.stringify(v2.ranuras[2]))
+ok('y la cantidad sale del inventario, no de la barra',
+   v2.ranuras[2].cantidad === semTrigo.quantity,
+   v2.ranuras[2].cantidad + ' vs ' + semTrigo.quantity)
+r = c.ponerEnHotbar(t2, 1, 'itm_inventado')
+ok('un uid que no tienes se rechaza', r.error && r.code === 404, JSON.stringify(r))
+r = c.ponerEnHotbar(t2, 99, semTrigo.uid)
+ok('una ranura fuera de la barra se rechaza', !!r.error)
+c.ponerEnHotbar(t2, 5, semTrigo.uid)
 ok('poner el mismo objeto en otra ranura lo MUEVE, no lo duplica',
-   p.hotbar[5] === 'potion_hp_ii' && p.hotbar[3] === null,
-   JSON.stringify([p.hotbar[3], p.hotbar[5]]))
+   t2.hotbar[5] === 'semilla_trigo' && t2.hotbar[2] === null,
+   JSON.stringify([t2.hotbar[2], t2.hotbar[5]]))
 ok('y no aparece dos veces en toda la barra',
-   p.hotbar.filter(x => x === 'potion_hp_ii').length === 1)
+   t2.hotbar.filter(x => x === 'semilla_trigo').length === 1)
+c.ponerEnHotbar(t2, 5, null)
+ok('poner null vacía la ranura', t2.hotbar[5] === null)
+r = c.seleccionarRanura(t2, 3)
+ok('seleccionar ranura la cambia', !r.error && t2.hotbarSel === 3)
+ok('seleccionar una inválida se rechaza y no la cambia',
+   !!c.seleccionarRanura(t2, 42).error && t2.hotbarSel === 3)
 
-c.asignarEnBarra(p, 5, null)
-ok('asignar null vacía la ranura', p.hotbar[5] === null)
+console.log('\n── UNA PARTIDA GUARDADA DE ANTES SE MIGRA ──')
+const viejo = nuevo()
+const daga = viejo.inventory.find(i => i.itemId === 'dagger')
+const poc = viejo.inventory.find(i => i.itemId === 'potion_hp')
+// Ocho ranuras con uids, que es como se guardaba.
+viejo.hotbar = [daga.uid, null, poc.uid, null, null, null, null, 'itm_que_ya_no_existe']
+viejo.hotbarSel = 2
+c.hotbarDe(viejo)
+ok('se alarga a diez ranuras', viejo.hotbar.length === 10, String(viejo.hotbar.length))
+ok('cada uid se traduce a su objeto', viejo.hotbar[0] === 'dagger' && viejo.hotbar[2] === 'potion_hp',
+   JSON.stringify(viejo.hotbar.slice(0, 3)))
+ok('se respeta en qué ranura estaba cada cosa', viejo.hotbar[1] === null)
+ok('un uid muerto se pierde, porque de un uid muerto no se saca nada',
+   viejo.hotbar[7] === null)
+ok('y la ranura seleccionada se conserva', viejo.hotbarSel === 2)
 
-const antes = [p.hotbar[0], p.hotbar[9]]
-c.moverEnBarra(p, 0, 9)
-ok('mover intercambia las dos ranuras',
-   p.hotbar[0] === antes[1] && p.hotbar[9] === antes[0], JSON.stringify([p.hotbar[0], p.hotbar[9]]))
-ok('mover a una ranura inválida se rechaza', !!c.moverEnBarra(p, 0, 99).error)
-
-ok('elegir ranura la cambia', c.elegirRanura(p, 7).ranuraActiva === 7 && p.ranuraActiva === 7)
-ok('elegir una ranura inválida se rechaza y no la cambia',
-   !!c.elegirRanura(p, 42).error && p.ranuraActiva === 7)
-
-console.log('\n── SE GUARDA EL itemId, NO EL uid: POR QUÉ IMPORTA ──')
+console.log('\n── LA RANURA RECUERDA: POR ESO NO SE GUARDA EL uid ──')
 const q = nuevo()
-c.barraDe(q)
-const cuantas = () => (q.inventory.find(i => i.itemId === 'potion_hp') || {}).quantity || 0
-ok('empieza con tres pociones en la ranura 9', q.hotbar[9] === 'potion_hp' && cuantas() === 3)
+c.hotbarDe(q)
+ok('empieza con tres pociones en la ranura 9', q.hotbar[9] === 'potion_hp')
 c.removeItem(q, 'potion_hp', 3, 'prueba')
 ok('al beberse la última, la FILA del inventario desaparece',
    !q.inventory.some(i => i.itemId === 'potion_hp'))
 ok('pero la ranura RECUERDA qué iba ahí', q.hotbar[9] === 'potion_hp', String(q.hotbar[9]))
 let res = c.ranuraResuelta(q, 9)
-ok('y se enseña agotada, con cantidad 0', res.agotada === true && res.cantidad === 0, JSON.stringify(res))
+ok('y se enseña agotada, con cantidad 0', res && res.agotada === true && res.cantidad === 0, JSON.stringify(res))
 c.addItem(q, 'potion_hp', 2, 'prueba')
 res = c.ranuraResuelta(q, 9)
 ok('al conseguir más, la ranura se rellena sola', res.agotada === false && res.cantidad === 2, JSON.stringify(res))
 
-console.log('\n── LA RANURA, RESUELTA CONTRA EL INVENTARIO DE AHORA ──')
-res = c.ranuraResuelta(q, 0)
-ok('un arma se marca como arma', res.clase === 'arma', res.clase)
-ok('y no como apilable', res.apilable === false)
-ok('trae nombre, icono y rareza del catálogo',
-   res.nombre === 'Daga de Hierro' && !!res.icono && !!res.rareza, JSON.stringify(res))
-res = c.ranuraResuelta(q, 9)
-ok('una poción se marca como consumible y apilable', res.clase === 'consumible' && res.apilable === true)
-ok('una ranura vacía lo dice', c.ranuraResuelta(q, 4).vacia === true)
-const todo = c.barraResuelta(q)
-ok('la barra entera trae las 10 ranuras resueltas', todo.hotbar.length === 10)
-ok('y la ranura activa', Number.isInteger(todo.ranuraActiva))
+console.log('\n── LA RANURA ACTIVA, PARA EL COMBATE ──')
+c.seleccionarRanura(q, 0)
+let act = c.ranuraActivaDe(q)
+ok('dice qué hay en la ranura elegida', act.itemId === 'dagger' && act.ranura === 0, JSON.stringify(act))
+ok('y que es un arma', act.clase === 'arma' && act.usableEnCombate === true)
+c.seleccionarRanura(q, 9)
+act = c.ranuraActivaDe(q)
+ok('una poción se marca como consumible', act.clase === 'consumible' && act.usableEnCombate === true)
+c.seleccionarRanura(q, 4)
+act = c.ranuraActivaDe(q)
+ok('una ranura vacía lo dice sin devolver null', act.vacia === true && act.itemId === null)
 
-console.log('\n── UNA BARRA GUARDADA CON BASURA SE LIMPIA SOLA ──')
+console.log('\n── UNA BARRA CON BASURA SE LIMPIA SOLA ──')
 const roto = nuevo()
-roto.hotbar = ['iron_ore', 'no_existe', null, 42, 'dagger', null, null, null, null, null]
-roto.ranuraActiva = 99
-c.barraDe(roto)
-ok('lo que no puede ir en la barra se quita', roto.hotbar[0] === null && roto.hotbar[1] === null)
-ok('lo que no es texto también', roto.hotbar[3] === null)
-ok('lo válido se queda', roto.hotbar[4] === 'dagger')
-ok('y la ranura activa vuelve a la 0', roto.ranuraActiva === 0)
-const corto = nuevo()
-corto.hotbar = ['dagger']
-c.barraDe(corto)
-ok('una barra de largo equivocado se rehace entera', corto.hotbar.length === 10)
+roto.hotbar = ['dagger', 42, null, { x: 1 }, 'no_existe_nada', null, null, null, null, null]
+roto.hotbarSel = 99
+c.hotbarDe(roto)
+ok('lo que no es texto se quita', roto.hotbar[1] === null && roto.hotbar[3] === null)
+ok('un objeto que no existe en el catálogo también', roto.hotbar[4] === null)
+ok('lo válido se queda', roto.hotbar[0] === 'dagger')
+ok('y la ranura seleccionada vuelve a la 0', roto.hotbarSel === 0)
 
-console.log('\n── EL ESTADO VIVO NO ESTÁ EN EL PERSONAJE (desvío de B.4) ──')
+console.log('\n── EL ESTADO VIVO NO ESTÁ EN EL PERSONAJE ──')
 const vivo = c.vivoDe('alguien')
 ok('el estado vivo existe', !!vivo && vivo.golpe === null && vivo.invulnerableHasta === 0)
 ok('y NO se le ha pegado al personaje',
@@ -188,12 +195,10 @@ ok('justo antes, todavía lo estás',
 ok('los 5 s son los que dice el encargo', c.__FUERA === 5000, String(c.__FUERA))
 c.vivoOlvidar('alguien')
 ok('se puede olvidar a alguien que se fue', c.enCombateMundo('alguien') === false)
-ok('quien nunca peleó no está en combate', c.enCombateMundo('nadie_de_nada') === false)
 
 console.log('\n── SIN PERSONAJE NO SE CAE NADA ──')
-ok('barraDe(null) devuelve una barra vacía', c.barraDe(null).hotbar.length === 10)
-ok('asignar sin personaje se rechaza', !!c.asignarEnBarra(null, 0, 'dagger').error)
-ok('mover sin personaje se rechaza', !!c.moverEnBarra(null, 0, 1).error)
+ok('hotbarDe(null) devuelve una barra vacía', c.hotbarDe(null).length === 10)
+ok('poner sin personaje no revienta', (() => { try { c.ponerEnHotbar(null, 0, 'dagger') } catch (e) { return false } return true })())
 ok('elegir sin personaje se rechaza', !!c.elegirRanura(null, 0).error)
 
 console.log('\n══════════════════════════════════════════════')

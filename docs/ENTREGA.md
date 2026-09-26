@@ -8,8 +8,8 @@ La foto de partida está en `docs/AUDITORIA_V31.md` y no se reescribe: sirve
 para comparar. El relato largo de cada cambio, con el porqué, está en
 `CHANGELOG.md`.
 
-**Estado al cerrar:** 55 archivos de prueba · 1.459 comprobaciones · 0 fallos
-· ~186 s con `npm test`.
+**Estado al cerrar:** 56 archivos de prueba · 1.489 comprobaciones · 0 fallos
+· ~196 s con `npm test`.
 
 ---
 
@@ -728,6 +728,137 @@ caída entera y hoy no cambia nada.
 funciones declaradas dos veces, y ahí sí comparten el global del
 navegador. Pide agrupar por página y es su propio trabajo.
 **SIGUIENTE** · FASE C, el combate en tiempo real en el mundo.
+
+---
+
+## FASE C — Combate en tiempo real en el mundo
+
+**ARCHIVOS TOCADOS** · `src/server/57-golpe.js` (nuevo),
+`src/server/59-mundo-combate.js` (nuevo), `src/server/58-arena.js`,
+`src/server/59-barra.js` (reescrito), `src/server/48-recursos-mundo.js`,
+`src/server/30-personajes-combate.js`, `src/server/50-telemetria.js`,
+`src/server/55-tiempo-real.js`, `src/server/60-http.js`,
+`test-mundo-tiempo-real.js` (nuevo), `medir-mundo.js` (nuevo),
+`test-arena-hurtbox.js`, `test-arena-ventanas.js`, `test-ensenar-combate.js`,
+`test-recursos.js`, `test-barra-datos.js`, `test-armas-perfil.js`,
+`run-tests.js`, `package.json`.
+
+### C.1 — El motor del golpe, extraído
+
+Sale de la arena a `57-golpe.js`: física de cuerpos, `separar`,
+`fasesDeGolpe`, `dentroDeSector`, `aplicarRetroceso`, `golpeableDe` /
+`golpeableEn` y el registro de «un golpe, un impacto». La arena pasa a
+usarlo. **No cambió ni un número**: sus siete pruebas siguen en verde.
+
+Tres comprobaciones se pusieron rojas y ninguna era del juego: buscaban
+el código **por nombre de archivo** (`58-arena.js`) y la función se había
+mudado. Se han reescrito para buscar en todo el servidor: una prueba que
+se rompe al mover una función de sitio no está midiendo lo que dice.
+
+### C.2–C.5 — El mundo
+
+Los monstruos pasan a ser del servidor y **compartidos por zona**. Antes
+los inventaba el navegador en posiciones al azar, uno por jugador: dos
+personas en el mismo bosque veían arañas distintas y no podían pelear con
+la misma. Paso fijo de 100 ms, una zona sin jugadores no se simula.
+
+Todos los números salen de tablas que ya existían —`MONSTERS`,
+`CONDUCTAS`, `CARACTER.vista`, `ZONES`— menos dos, que van medidos abajo.
+
+El servidor conoce ahora los **edificios** de cada zona, que solo tenía el
+navegador. Están copiados, y una copia se desincroniza: hay una prueba que
+compara las dos tablas y falla si dejan de cuadrar.
+
+**MEDICIÓN** · nivel 1 contra una araña, con `npm run mundo`:
+
+| | resultado |
+|---|---|
+| Matarla | **3,3 s** · 11 golpes de 26 · ni un barrido al aire |
+| Vida perdida sin bloquear | **176** de 1.150 |
+| Vida perdida bloqueando | **40** · dos bloqueos |
+| Lo que ahorra bloquear | **77 %**, idéntico en dos tiradas |
+| Pulsar → ver el gesto | 121 ms de media · 336 el peor |
+| Pulsar → ver el daño | 171 ms de media · 461 el peor |
+
+**UN NÚMERO QUE LA MEDICIÓN OBLIGÓ A CAMBIAR** · el aviso de golpe salía
+de la tabla en 300 ms. Con 121 ms para ver el gesto y otro tanto para que
+llegue la respuesta, al jugador le quedaban menos de 60 ms: bloquear era
+imposible, y bloquear es una de las dos mecánicas que el STEP 21 demostró
+que deciden el juego. El suelo pasa a 500 ms, que es la suma de tres cosas
+medidas (121 de ver + 250 de reaccionar + 121 de que llegue), no un número
+redondo. Quien declare un aviso más largo conserva el suyo. En la primera
+medición el bloqueo registraba **cero** bloqueos; ahora registra dos y
+ahorra el 77 %.
+
+### C.6–C.9
+
+Beber desde la barra usa la misma lógica de siempre y emite
+`first_potion`. Como en tiempo real no hay turnos, **hace falta un
+enfriamiento que no existía** (decisión D11): 3 s, anclado a que una pelea
+con una araña dura 3,3 s. El descanso se amplía con «sin daño hecho ni
+recibido en 5 s», sin sustituir las tres condiciones del STEP 18. Y
+`/api/combat/action` **no se toca**: el mundo en tiempo real se añade al
+lado, como dijo la decisión D9.
+
+### EL FALLO GORDO: HABÍA DOS BARRAS
+
+`/api/hotbar` **ya existía** desde la recolección: ocho ranuras con el
+`uid` de una fila del inventario, con endpoints, cliente y dos pruebas. En
+la FASE B escribí una segunda sobre **el mismo campo `char.hotbar`**, con
+diez ranuras e `itemId`. No reventó nada porque la mía nacía inerte, pero
+era una mina: en cuanto la FASE D la conectara, un sistema habría dejado el
+array de 8 uids y el otro lo habría rehecho de 10 itemId, en bucle, en
+cada petición.
+
+**Mi auditoría de la FASE A no lo vio.** Repasé nueve puntos del combate y
+ninguno preguntaba «¿existe ya algo que se parezca a lo que voy a
+construir?».
+
+Ahora hay una sola barra, en `59-barra.js`, y toma lo mejor de las dos:
+
+- **De la vieja**, que en la barra cabe TODO lo que tengas —semillas, el
+  hacha, el pico—. La sección D.1 dice «solo armas y consumibles»; eso
+  rompería la recolección, que es para lo que nació la barra. Lo que se
+  restringe es el **uso en combate**, no lo que cabe.
+- **De la nueva**, el `itemId` en vez del `uid`, para que la ranura
+  recuerde (sección C.6), y las diez ranuras.
+- Las partidas guardadas se migran: cada uid a su itemId, y dos ranuras
+  más al final. Los endpoints siguen aceptando uid y devolviendo la misma
+  forma.
+
+**UNA SOLA EXPECTATIVA CAMBIADA EN TODA LA FASE** · `test-recursos`
+esperaba 8 ranuras y ahora espera 10, porque el encargo pide diez (teclas
+1–0). Todo lo demás pasa sin tocar.
+
+**OTRO FALLO MÍO** · llamaba a `herir()` de la máquina de estados de la
+arena para trabar al monstruo. Le escribe un `estado` que este bucle no
+conoce: medido, la araña se quedaba clavada a 80 px, fuera del alcance de
+la daga, **para el resto de la pelea** — pasaba de 285 a 129 de vida y ahí
+se quedaba, 15 segundos. Ahora hay un `trabar()` propio con los mismos
+umbrales.
+
+**PRUEBAS AÑADIDAS** · `test-mundo-tiempo-real.js` (35): el sector tiene
+frente y espalda, un golpe no toca dos veces, mantener pulsado no pasa del
+techo de la cadencia, no se pelea con una batalla por turnos abierta,
+matar arañas avanza su misión, el cliente no decide nada, y las paredes
+del servidor cuadran con las de la página.
+
+**PRUEBAS QUE PASAN** · 56 archivos · 1.489 comprobaciones · 0 fallos ·
+196 s.
+
+**SE SABE Y NO SE ARREGLA AQUÍ**
+- El cliente todavía no dibuja nada de esto: es la FASE E. Hoy el mundo
+  sigue abriendo batallas por turnos al tocar un monstruo, y el combate en
+  tiempo real vive detrás de `/api/mundo/combate` sin pantalla.
+- Los edificios están en dos sitios. Hay una prueba que impide que se
+  separen, pero lo correcto es servirlos desde el servidor, y eso toca la
+  página porque también los dibuja.
+- `m_troll_boss`, `m_bat` y `m_liche` siguen sin conducta y por eso no
+  aparecen en el mundo en tiempo real (decisión D10).
+
+**SIGUIENTE** · FASE D: la barra ya está unificada por debajo, así que
+queda su pantalla y los dos endpoints que faltan (`mover` y `asignar` por
+itemId).
 
 ---
 

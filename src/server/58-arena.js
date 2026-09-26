@@ -27,101 +27,23 @@
 //  subida de nivel que el combate por turnos.
 // ═══════════════════════════════════════════════════════════════════
 
-// ── Física del movimiento ──────────────────────────────────────────
-// Cada cuerpo lleva DOS velocidades y se suman para moverlo:
+// ── Física, cuerpos y golpes: en 57-golpe.js ───────────────────────
 //
-//   vx, vy   lo que pides tú (o la IA). Persigue una velocidad
-//            objetivo y nunca la pasa: por eso `vel` significa de
-//            verdad "píxeles por segundo" y la agilidad se nota.
-//   ex, ey   lo que te hacen. Retrocesos, embestidas, empujones al
-//            chocar. No obedece a nadie: sale disparado y se apaga.
+// Todo esto vivía aquí y no tenía nada de arena. Desde la FASE C.1 está
+// en 57-golpe.js y lo comparten la arena y el mundo en tiempo real:
+// decaimiento, moverCuerpo, apartar, impulsar, aplicarRetroceso,
+// separar, golpeableDe, golpeableEn, fasesDeGolpe, dentroDeSector y el
+// registro de "un golpe, un impacto".
 //
-// Antes había una sola velocidad para todo, y eso tenía dos
-// consecuencias feas. Una: al recibir un golpe bastaba con seguir
-// pulsando la dirección contraria para cancelar el retroceso, así que
-// el `empuje` de las armas era casi decorativo. Otra: el rozamiento
-// (×0,82) se aplicaba UNA VEZ POR TICK en vez de por segundo, así que
-// la velocidad real dependía de si el servidor iba fino o cargado, y
-// el tope acababa siendo ~765 px/s con una `vel` nominal de 210. El
-// número de la ficha no describía nada.
-const ARENA_TICK_MS = 100
-const ACEL = 14          // 1/s: cuánto tarda en alcanzar la velocidad pedida
-const ROCE_IMPULSO = 6   // 1/s: cuánto tarda en apagarse un empujón
-const SEPARACION = 260   // px/s: con cuánta fuerza se despegan dos cuerpos
-// Cuánto se pasa de largo el guardia de centros, para que el redondeo
-// del estado que viaja al cliente no convierta un 15,05 en un 14,3.
-const MARGEN_CENTRO = 1.5
+// La extracción no cambió ni un número: las pruebas de la arena pasan
+// sin tocar una sola expectativa.
+const ARENA_TICK_MS = PASO_MS
 
-// Fracción que sobrevive tras `dt` segundos con una caída de ritmo k.
-// Es lo que hace que la física no cambie porque un tick llegue tarde.
-function decaimiento(k, dt) { return Math.exp(-k * dt) }
-
-// Mueve un cuerpo: persigue lo que pide, arrastra lo que le hacen.
-function moverCuerpo(c, objx, objy, dt) {
-  const k = 1 - decaimiento(ACEL, dt)
-  c.vx += (objx - c.vx) * k
-  c.vy += (objy - c.vy) * k
-  const r = decaimiento(ROCE_IMPULSO, dt)
-  c.ex = (c.ex || 0) * r
-  c.ey = (c.ey || 0) * r
-  c.x += (c.vx + c.ex) * dt
-  c.y += (c.vy + c.ey) * dt
-}
-
-// Mueve un cuerpo sin dejarlo salir del mapa y devuelve lo que no cupo,
-// para que quien lo empujaba sepa cuánto tiene que apartarse él.
-function apartar(c, r, dx, dy) {
-  const nx = limitar(c.x + dx, r, ARENA_ANCHO - r)
-  const ny = limitar(c.y + dy, r, ARENA_ALTO - r)
-  const sobra = { x: (c.x + dx) - nx, y: (c.y + dy) - ny }
-  c.x = nx; c.y = ny
-  return sobra
-}
-
-// Un golpe, un choque, una embestida. Va al carril de impulsos para
-// que no se pueda cancelar simplemente andando en sentido contrario.
-function impulsar(c, ang, fuerza) {
-  c.ex = (c.ex || 0) + Math.cos(ang) * fuerza
-  c.ey = (c.ey || 0) + Math.sin(ang) * fuerza
-}
-
-// Dos cuerpos no pueden ocupar el mismo sitio. Se separan empujándose,
-// no teletransportándose: así un enemigo que te acorrala te desplaza en
-// vez de meterse dentro de ti, y la manada deja de apilarse en un punto.
-// El peso decide quién cede: el jugador aguanta más que una araña.
-function separar(a, b, ra, rb, pesoA, pesoB) {
-  const dx = b.x - a.x, dy = b.y - a.y
-  const d = Math.hypot(dx, dy)
-  const min = ra + rb
-  if (d >= min) return
-  // Exactamente encima: se elige una dirección cualquiera y se salvan.
-  const ang = d > 0.01 ? Math.atan2(dy, dx) : Math.random() * Math.PI * 2
-  const hueco = min - (d > 0.01 ? d : 0)
-  const total = pesoA + pesoB
-  const cx = Math.cos(ang), cy = Math.sin(ang)
-
-  // Se separan DE VERDAD, moviéndolos. Solo con impulsos no bastaba: un
-  // enemigo que empuja hacia ti todo el rato gana al empujón y se te
-  // acaba metiendo dentro. El reparto va por peso, así que la araña
-  // cede casi todo y el jugador casi nada.
-  //
-  // Y lo que uno no puede ceder, lo cede el otro. Acorralado contra la
-  // pared, el jugador no tiene hacia dónde apartarse: antes la
-  // separación lo sacaba del mapa, el límite lo devolvía dentro, y el
-  // enemigo se quedaba metido en él. Ahora el resto que no cabe se lo
-  // come el enemigo, que sí tiene sitio.
-  const sobra = apartar(a, ra, -cx * hueco * (pesoB / total), -cy * hueco * (pesoB / total))
-  apartar(b, rb, cx * hueco * (pesoA / total) - sobra.x, cy * hueco * (pesoA / total) - sobra.y)
-
-  // Y además un empujón, que es lo que hace que chocar se NOTE en vez
-  // de parecer que los cuerpos se deslizan pegados.
-  const fuerza = SEPARACION * (hueco / min)
-  impulsar(a, ang + Math.PI, fuerza * (pesoB / total))
-  impulsar(b, ang, fuerza * (pesoA / total))
-}
 const ARENA_ANCHO = 900
 const ARENA_ALTO = 600
 const ARENA_MAX_SEGUNDOS = 300
+// Las paredes del ring, en la forma que entiende 57-golpe.js.
+const MAPA_ARENA = { ancho: ARENA_ANCHO, alto: ARENA_ALTO }
 
 // ── Las dos escalas de la arena ────────────────────────────────────
 //
@@ -369,43 +291,6 @@ function armaVista(id) {
   }
 }
 
-// Cuerpo y zona golpeable son DOS cosas distintas.
-//
-// Hasta ahora `radio` hacia tres trabajos a la vez: empujar cuerpos para
-// que no se apilen, frenar contra la pared, y decidir si un golpe toca.
-// Mezclarlos obliga a elegir: un cuerpo generoso para que no se solapen
-// los sprites significaba tambien una zona golpeable generosa, asi que
-// rozar a un enemigo por el borde contaba como recibir el golpe entero.
-// Eso es justo lo que hace que esquivar no se sienta como esquivar.
-//
-//   radio      cuerpo fisico: separacion entre cuerpos y limite de pared
-//   golpeable  zona vulnerable: lo unico que decide si un golpe entra
-//
-// El jugador tiene la zona golpeable MAS PEQUENA que su cuerpo (11 de
-// 15). Es la convencion de todo juego de accion y tiene un motivo: lo
-// vulnerable es el torso, no la huella entera del personaje. Pasar
-// rozando deja de costar vida, pero plantarse delante de un enemigo
-// sigue costando exactamente lo mismo, porque el enemigo se acerca
-// hasta tener al jugador a tiro de todas formas.
-//
-// Los enemigos conservan zona golpeable igual a su cuerpo a proposito:
-// encogerla cambiaria el dano por segundo del jugador, y esto es un
-// arreglo de sensaciones, no de balance. El gancho queda puesto por si
-// algun bicho concreto lo necesita (`golpeable` en su ficha).
-const GOLPEABLE_JUGADOR = 11
-
-function golpeableDe(c) {
-  return Number.isFinite(c && c.golpeable) ? c.golpeable : GOLPEABLE_JUGADOR
-}
-function golpeableEn(en) {
-  const c = en.cfg || {}
-  return Number.isFinite(c.golpeable) ? c.golpeable : c.radio
-}
-
-// Conductas: lo que distingue a un enemigo de otro más allá de sus números
-//   perseguidor  va a por ti y golpea de cerca
-//   tirador      mantiene distancia y dispara
-//   embestidor   se para, se prepara y carga en línea recta
 const CONDUCTAS = {
   m_spider:   { tipo: 'perseguidor', vel: 108, radio: 16, alcance: 34, cadenciaMs: 900 },
   m_skeleton: { tipo: 'perseguidor', vel: 92,  radio: 17, alcance: 36, cadenciaMs: 1000 },
@@ -463,9 +348,6 @@ function nivelDeLasOleadas(oleadas) {
   }
   return n
 }
-
-function limitar(v, min, max) { return v < min ? min : v > max ? max : v }
-function dist(a, b) { return Math.hypot(a.x - b.x, a.y - b.y) }
 
 function crearEnemigo(monsterId, x, y, seg) {
   const m = MONSTERS[monsterId]
@@ -625,36 +507,14 @@ function entradaArena(username, entrada) {
 
 // ── UN GOLPE DURA ALGO ─────────────────────────────────────────────
 //
-// Antes el daño se aplicaba EN EL MISMO INSTANTE en que llegaba la
-// intención de atacar. Pulsabas y el enemigo perdía vida, sin más. Eso
-// tiene dos consecuencias feas:
-//
-//   · todas las armas se sienten igual. Un mandoble de 620 ms y una
-//     daga de 300 impactan los dos al instante; lo único que cambia es
-//     cuánto tardas en volver a pulsar. El peso del arma no existe.
-//   · no hay nada que esquivar. Si el golpe no tiene anticipación, no
-//     hay ventana en la que apartarse, y el combate se reduce a quién
-//     pulsa más rápido.
-//
-// Ahora un golpe tiene tres tiempos: se prepara, está vivo, y se
-// recupera. El daño solo existe mientras está VIVO.
-//
-//   ANTICIPACIÓN   el gesto arranca, todavía no toca a nadie
-//   ACTIVO         el filo está fuera: aquí y solo aquí hace daño
-//   RECUPERACIÓN   el resto, hasta poder volver a pegar
-//
-// DE DÓNDE SALEN LOS NÚMEROS
-// De la cadencia del arma, que ya está en el catálogo: un arma lenta se
-// prepara más. Y los tres tiempos SUMAN la cadencia, así que el daño
-// por segundo no se mueve ni un punto. Lo que cambia no es cuánto
-// pegas, es cuándo llega. Los topes evitan los dos extremos: que una
-// daga tenga una anticipación imperceptible y que un cetro se quede
-// congelado medio segundo antes de tocar.
+// Las tres fases y el porqué están en 57-golpe.js, que es de donde
+// salen. Aquí queda solo la traducción: la arena habla de "activo" y el
+// módulo compartido de "activa". Cambiar el nombre en la arena obligaría
+// a tocar sus pruebas, y esta extracción no debe cambiarles ni una
+// expectativa.
 function ventanasDe(arma) {
-  const c = arma.cadenciaMs
-  const anticipacion = Math.round(limitar(c * 0.30, 60, 220))
-  const activo = Math.round(limitar(c * 0.22, 60, 160))
-  return { anticipacion, activo, recuperacion: Math.max(0, c - anticipacion - activo) }
+  const f = fasesDeGolpe(arma.cadenciaMs)
+  return { anticipacion: f.anticipacion, activo: f.activa, recuperacion: f.recuperacion }
 }
 
 // Empezar el gesto. Aquí NO se hace daño a nadie: solo se apunta cuándo
@@ -715,13 +575,11 @@ function resolverGolpe(p, ahora) {
   let tocado = false
   for (const en of p.enemigos) {
     if (en.muerto) continue
-    if (g.tocados.includes(en.id)) continue
-    if (dist(j, en) > arma.alcance + golpeableEn(en)) continue
+    if (yaTocado(g, en.id)) continue
+    if (!dentroDeSector(j, j.mirando, arma.alcance, arma.arco, en)) continue
     const ang = Math.atan2(en.y - j.y, en.x - j.x)
-    let dif = Math.abs(((ang - j.mirando + Math.PI * 3) % (Math.PI * 2)) - Math.PI)
-    if (dif > arma.arco) continue
     dañarEnemigo(p, en, Math.round(j.poder * arma.dmg), arma.empuje, ang, ahora)
-    g.tocados.push(en.id)
+    anotarTocado(g, en.id)
     tocado = true
   }
   // El aviso de golpe sale la primera vez que la ventana se abre, haya
@@ -1066,10 +924,10 @@ function tick(p) {
     // jugador.
     for (let i = 0; i < vivos.length; i++) {
       for (let k = i + 1; k < vivos.length; k++) {
-        separar(vivos[i], vivos[k], vivos[i].cfg.radio, vivos[k].cfg.radio, 1, 1)
+        separar(vivos[i], vivos[k], vivos[i].cfg.radio, vivos[k].cfg.radio, 1, 1, MAPA_ARENA)
       }
     }
-    for (const en of vivos) separar(j, en, j.radio, en.cfg.radio, 14, 1)
+    for (const en of vivos) separar(j, en, j.radio, en.cfg.radio, 14, 1, MAPA_ARENA)
   }
 
   // Las paredes cuentan desde el borde del cuerpo, no desde su centro:

@@ -65,11 +65,20 @@ async function run() {
     JSON.stringify(ens.map(e => e.radio)))
 
   console.log('\n── CADA RADIO SIGUE HACIENDO SU TRABAJO ──')
-  const codigo = fs.readFileSync(path.join(__dirname, 'src', 'server', '58-arena.js'), 'utf8')
+  // Se lee TODO el servidor, no un archivo concreto. Lo que esta prueba
+  // defiende es que la distinción cuerpo/zona golpeable siga existiendo,
+  // no en qué archivo vive: en la FASE C.1 el motor del golpe se movió a
+  // 57-golpe.js y estas dos comprobaciones se pusieron rojas sin que el
+  // juego hubiera cambiado en nada. Una prueba que se rompe al mover una
+  // función de sitio no está midiendo lo que dice medir.
+  const dirServidor = path.join(__dirname, 'src', 'server')
+  const codigo = fs.readdirSync(dirServidor).filter(f => f.endsWith('.js')).sort()
+    .map(f => fs.readFileSync(path.join(dirServidor, f), 'utf8')).join('\n')
   check('existe una constante para la zona golpeable del jugador',
     /const GOLPEABLE_JUGADOR\s*=\s*\d+/.test(codigo))
   check('el golpe del jugador pregunta por la zona golpeable del enemigo',
-    /dist\(j, en\) > arma\.alcance \+ golpeableEn\(en\)/.test(codigo))
+    /dentroDeSector\(j, j\.mirando, arma\.alcance, arma\.arco, en\)/.test(codigo) &&
+    /dist\(origen, objetivo\) > alcance \+ golpeableEn\(objetivo\)/.test(codigo))
   check('el alcance del enemigo pregunta por la del jugador',
     /const cuerpos = c\.alcance \+ golpeableDe\(j\)/.test(codigo))
   check('los proyectiles también',
