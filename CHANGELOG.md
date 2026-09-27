@@ -4,6 +4,16 @@ Cada versión con lo que la motivó. Los detalles completos están en `docs/CAMB
 
 ## v33 (en curso) — Combate estilo Terraria y barra de objetos
 
+### Una varita de magia pegaba como puños
+
+Al probar los proyectiles del mundo —que no tenían ni una prueba— salió
+esto: el combate decidía qué arma llevas preguntando a la tabla de la
+arena, y un arma que solo estuviera en el catálogo no aparecía ahí. El
+resultado era que la trataba como puños: pegaba cuerpo a cuerpo, no
+lanzaba nada y no gastaba maná. Hoy no afecta a ningún arma del juego,
+porque todas están en las dos tablas; pero la primera que se añada solo
+al catálogo habría salido rota sin avisar.
+
 ### En el móvil no se podía pelear, y la regla decía que sí
 
 Al repasar si el combate estaba terminado apareció esto: en un teléfono

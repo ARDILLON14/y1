@@ -321,10 +321,16 @@ function pasoJugador(zona, j, ahora) {
   // Una poción en la ranura activa se BEBE con el mismo botón.
   if (ranura.clase === 'consumible') { beberDeLaBarra(j, v, ranura, ahora); return }
 
-  const arma = perfilArmaDe(char)
   // El arma de la ranura tiene que ser la que se empuña: si la ranura
   // dice una y el equipo otra, manda la ranura (sección D.1).
-  const usar = ARMAS[ranura.itemId] ? perfilDeArma(ranura.itemId) : arma
+  //
+  // Se pregunta esArma() y NO `ARMAS[itemId]`. Con lo segundo, que es
+  // lo que había, un arma declarada solo en el catálogo —justo el caso
+  // para el que existen los valores por defecto de la sección B.2— no
+  // estaba en la tabla, caía al arma equipada, y armaDe() la convertía
+  // en PUÑOS. Una varita de magia pegaba cuerpo a cuerpo, sin gastar
+  // maná y sin lanzar nada. Lo destapó test-mundo-proyectiles.
+  const usar = esArma(ranura.itemId) ? perfilDeArma(ranura.itemId) : perfilArmaDe(char)
   if (usar.costeMp > 0 && char.mp < usar.costeMp) {
     avisar(j.usuario, { tipo: 'sin_mana', costeMp: usar.costeMp })
     return rechazo(j.usuario, 'sin_mana')

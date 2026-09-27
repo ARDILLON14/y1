@@ -8,8 +8,8 @@ La foto de partida está en `docs/AUDITORIA_V31.md` y no se reescribe: sirve
 para comparar. El relato largo de cada cambio, con el porqué, está en
 `CHANGELOG.md`.
 
-**Estado al cerrar:** 60 archivos de prueba · 1.672 comprobaciones · 0 fallos
-· ~191 s con `npm test`.
+**Estado al cerrar:** 61 archivos de prueba · 1.700 comprobaciones · 0 fallos
+· ~190 s con `npm test`.
 
 ---
 
@@ -1148,6 +1148,54 @@ las 35.
 
 **SIGUIENTE** · las pruebas de los proyectiles del mundo, el arma con su
 PNG en la mano, y las dos mediciones de la sección 8 que no hice.
+
+---
+
+## Los proyectiles del mundo, por fin probados
+
+**POR QUÉ** · `test-proyectiles.js` prueba los de la ARENA. Los del mundo
+los escribí en la FASE C y no comprobé ninguna de las seis cosas que pide
+la sección 7. Al comprobarlas apareció un fallo que las invalidaba casi
+todas.
+
+**ARCHIVOS TOCADOS** · `src/server/59-mundo-combate.js`,
+`test-mundo-proyectiles.js` (nuevo), `run-tests.js`.
+
+**EL FALLO: UNA VARITA DE MAGIA PEGABA COMO PUÑOS** · el combate del mundo
+decidía qué arma se empuña preguntando `ARMAS[itemId]`, la tabla de la
+arena. Un arma declarada solo en el catálogo —justo el caso para el que
+existen los valores por defecto de la sección B.2— no estaba en esa tabla,
+caía al arma equipada, y `armaDe()` la convertía en **puños**. Pegaba
+cuerpo a cuerpo, sin gastar maná y sin lanzar nada. La promesa de la B.2
+era de papel. Ahora se pregunta `esArma()`, que mira las dos cosas.
+
+**LAS SEIS COMPROBACIONES**
+
+| | cómo | resultado |
+|---|---|---|
+| 1 · velocidad declarada | servidor de verdad, arco corto | ~400 px/s, en línea recta |
+| 2 · choca con edificios | disparando a una pared del pueblo | muere antes de 500 ms |
+| 3 · caduca a su vidaMs | disparando al vacío | vive ~1.100 ms |
+| 4 · no toca dos veces | contra monstruos del bosque | nunca más impactos que disparos |
+| 5 · no más de 8 por jugador | en aislado | tope exacto, y es POR jugador |
+| 6 · magia sin maná | en aislado | rechazada, avisada, sin cobrar |
+
+**LAS DOS ÚLTIMAS NO SE PUEDEN HACER CONTRA EL SERVIDOR, Y LO DIGO** · con
+las armas que hay, un arco dispara cada 560 ms y su flecha vive 1.100: nunca
+hay más de dos a la vez. Y **ninguna arma del juego gasta maná**. Para esas
+dos se evalúan los módulos del servidor en aislado con dos armas que solo
+existen dentro de la prueba, que es lo que pide el encargo cuando el
+catálogo no tiene lo que hace falta. No he añadido ninguna puerta de
+pruebas al servidor: las cuatro primeras usan `/api/dev/dar`, que ya
+existía y está cerrada en producción.
+
+**SE COMPROBÓ QUE DETECTA** · contra el código anterior fallan **7** de 28.
+
+**PRUEBAS QUE PASAN** · 61 archivos · 1.700 comprobaciones · 0 fallos ·
+190 s.
+
+**SIGUIENTE** · el arma con su PNG en la mano, y las dos mediciones de la
+sección 8.
 
 ---
 
