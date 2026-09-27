@@ -5385,6 +5385,30 @@ function faseDeGolpe(golpe, ahora) {
 function volteoDeArma(dirApuntado) {
   return Math.cos(Number(dirApuntado) || 0) < 0 ? -1 : 1
 }
+
+// Cómo girar y voltear el DIBUJO del arma para que la hoja apunte hacia
+// donde apuntas.
+//
+// Los PNG no vienen dibujados mirando a la derecha: vienen en diagonal,
+// y cada uno declara a qué ángulo en su ficha (spriteAngulo; las tres
+// espadas del juego, −135°). Hay que descontarlo. Y al mirar a la
+// izquierda el dibujo se voltea EN VERTICAL, que al girarlo cambia el
+// signo con el que se descuenta.
+//
+// Las cuentas: con la hoja a ángulo S en el dibujo y queriendo que
+// acabe a ángulo A en pantalla,
+//   mirando a la derecha    girar A − S, sin voltear
+//   mirando a la izquierda  voltear en vertical (S pasa a −S) y girar A + S
+// En los dos casos la hoja termina en A. Es la misma transformación que
+// hace la arena con el canvas, escrita para un sprite de Phaser.
+function transformeArma(apuntar, poseAngulo, spriteAngulo) {
+  var ap = Number(apuntar); if (!isFinite(ap)) ap = 0
+  var pa = Number(poseAngulo); if (!isFinite(pa)) pa = 0
+  var S = Number(spriteAngulo); if (!isFinite(S)) S = -2.356
+  var v = volteoDeArma(ap)
+  var A = ap + pa * v
+  return { rotacion: v === 1 ? A - S : A + S, escalaY: v, hacia: A }
+}
 </script>`
 
 // El combate en tiempo real, en pantalla.
@@ -5665,6 +5689,37 @@ function mcActualizar(escena) {
 }
 
 // ── El arma en la mano ─────────────────────────────────────────────
+//
+// Con su DIBUJO si lo tiene, y con su emoji si no. Hasta aquí era
+// siempre el emoji, y no porque faltara arte: las tres espadas tienen
+// PNG, tienen la empuñadura comprobada contra su canal alfa, y su
+// perfil ya viajaba hasta aquí. Faltaba pintarlas.
+//
+// El dibujo se coloca por su EMPUÑADURA, no por su centro: el origen del
+// sprite es el punto donde agarra la mano. Centrado, el arma queda
+// flotando medio sprite por delante del personaje, como si la llevara a
+// rastras. Es lo mismo que hace la arena.
+var MC_TEXTURAS = {}   // itemId → 'cargando' | 'lista' | 'rota'
+
+function mcTexturaDeArma(escena, arma) {
+  if (!arma || !arma.imagen || !arma.id) return null
+  var clave = 'arma_' + arma.id
+  var estado = MC_TEXTURAS[arma.id]
+  if (estado === 'lista') return clave
+  if (estado === 'cargando' || estado === 'rota') return null
+  if (escena.textures && escena.textures.exists(clave)) { MC_TEXTURAS[arma.id] = 'lista'; return clave }
+  MC_TEXTURAS[arma.id] = 'cargando'
+  try {
+    escena.load.image(clave, arma.imagen)
+    escena.load.once('complete', function () {
+      MC_TEXTURAS[arma.id] = escena.textures.exists(clave) ? 'lista' : 'rota'
+    })
+    escena.load.once('loaderror', function () { MC_TEXTURAS[arma.id] = 'rota' })
+    escena.load.start()
+  } catch (e) { MC_TEXTURAS[arma.id] = 'rota' }
+  return null
+}
+
 function mcDibujarArma(escena, ahora) {
   if (!escena.armaDibujo) {
     escena.armaDibujo = escena.add.text(0, 0, '', { fontSize: '17px', resolution: 2 })
@@ -5682,6 +5737,31 @@ function mcDibujarArma(escena, ahora) {
   var dist = 13 + pose.offsetX
   var x = escena.px + Math.cos(MC.apuntar) * dist
   var y = escena.py + Math.sin(MC.apuntar) * dist + pose.offsetY
+
+  var clave = mcTexturaDeArma(escena, arma)
+  if (clave) {
+    // El sprite se crea (o se cambia de textura) solo cuando hace falta.
+    if (!escena.armaSprite) {
+      escena.armaSprite = escena.add.image(x, y, clave).setDepth(11)
+    } else if (escena.armaSprite.texture.key !== clave) {
+      escena.armaSprite.setTexture(clave)
+    }
+    var emp = arma.empunadura || { x: 0.79, y: 0.79 }
+    var t = transformeArma(MC.apuntar, pose.angulo, arma.spriteAngulo)
+    // 32 px de dibujo a la escala de su ficha (2 por defecto, la de la
+    // sección E.5), multiplicado por lo que crezca el gesto.
+    var k = (arma.escala || 2) * pose.escala * (32 / Math.max(1, escena.armaSprite.width || 32))
+    escena.armaSprite.setOrigin(emp.x, emp.y)
+    escena.armaSprite.setPosition(x, y)
+    escena.armaSprite.setRotation(t.rotacion)
+    escena.armaSprite.setScale(k, k * t.escalaY)
+    escena.armaSprite.setVisible(MC.activo)
+    escena.armaDibujo.setVisible(false)
+    return
+  }
+
+  // Sin dibujo, o mientras carga, o si falló: el emoji. Nunca un hueco.
+  if (escena.armaSprite) escena.armaSprite.setVisible(false)
   escena.armaDibujo.setText(arma.icono || '⚔️')
   escena.armaDibujo.setPosition(x, y)
   escena.armaDibujo.setRotation(MC.apuntar + pose.angulo * v)
@@ -5751,7 +5831,8 @@ async function mcCargarArma() {
   var r = await apiGet('/api/hotbar')
   if (!r.ok) return
   var sel = (r.data.ranuras || [])[r.data.seleccionada || 0]
-  if (!sel || !sel.arma) { MC.arma.icono = '👊'; return }
+  if (!sel || !sel.arma) { MC.arma.icono = '👊'; MC.arma.imagen = null; MC.arma.id = null; return }
+  MC.arma.id = sel.itemId
   MC.arma.icono = sel.icono || '⚔️'
   MC.arma.imagen = sel.imagen || null
   var p = await apiGet('/api/armas/' + sel.itemId)
@@ -5762,6 +5843,7 @@ async function mcCargarArma() {
     MC.arma.cadenciaMs = p.data.perfil.cadenciaMs
     MC.arma.spriteAngulo = p.data.perfil.spriteAngulo
     MC.arma.empunadura = p.data.perfil.empunadura
+    MC.arma.escala = p.data.perfil.escala || 2
   }
 }
 
@@ -30268,6 +30350,9 @@ async function handleAPI(req, res, pathname, query) {
       empunadura: p2.empunadura, spriteAngulo: p2.spriteAngulo,
       icono: p2.icono, imagen: p2.imagen, nombre: p2.nombre,
       costeMp: p2.costeMp, autoGolpe: p2.autoGolpe,
+      // A qué escala se pinta el dibujo: la de su ficha, o 2, que es la
+      // de la sección E.5 del encargo.
+      escala: ((typeof fichaDeArma === 'function' && fichaDeArma(p2.id)) || {}).escala || 2,
     } })
   }
   if (pathname === '/api/hotbar/mover' && req.method === 'POST') {

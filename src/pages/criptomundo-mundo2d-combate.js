@@ -276,6 +276,37 @@ function mcActualizar(escena) {
 }
 
 // ── El arma en la mano ─────────────────────────────────────────────
+//
+// Con su DIBUJO si lo tiene, y con su emoji si no. Hasta aquí era
+// siempre el emoji, y no porque faltara arte: las tres espadas tienen
+// PNG, tienen la empuñadura comprobada contra su canal alfa, y su
+// perfil ya viajaba hasta aquí. Faltaba pintarlas.
+//
+// El dibujo se coloca por su EMPUÑADURA, no por su centro: el origen del
+// sprite es el punto donde agarra la mano. Centrado, el arma queda
+// flotando medio sprite por delante del personaje, como si la llevara a
+// rastras. Es lo mismo que hace la arena.
+var MC_TEXTURAS = {}   // itemId → 'cargando' | 'lista' | 'rota'
+
+function mcTexturaDeArma(escena, arma) {
+  if (!arma || !arma.imagen || !arma.id) return null
+  var clave = 'arma_' + arma.id
+  var estado = MC_TEXTURAS[arma.id]
+  if (estado === 'lista') return clave
+  if (estado === 'cargando' || estado === 'rota') return null
+  if (escena.textures && escena.textures.exists(clave)) { MC_TEXTURAS[arma.id] = 'lista'; return clave }
+  MC_TEXTURAS[arma.id] = 'cargando'
+  try {
+    escena.load.image(clave, arma.imagen)
+    escena.load.once('complete', function () {
+      MC_TEXTURAS[arma.id] = escena.textures.exists(clave) ? 'lista' : 'rota'
+    })
+    escena.load.once('loaderror', function () { MC_TEXTURAS[arma.id] = 'rota' })
+    escena.load.start()
+  } catch (e) { MC_TEXTURAS[arma.id] = 'rota' }
+  return null
+}
+
 function mcDibujarArma(escena, ahora) {
   if (!escena.armaDibujo) {
     escena.armaDibujo = escena.add.text(0, 0, '', { fontSize: '17px', resolution: 2 })
@@ -293,6 +324,31 @@ function mcDibujarArma(escena, ahora) {
   var dist = 13 + pose.offsetX
   var x = escena.px + Math.cos(MC.apuntar) * dist
   var y = escena.py + Math.sin(MC.apuntar) * dist + pose.offsetY
+
+  var clave = mcTexturaDeArma(escena, arma)
+  if (clave) {
+    // El sprite se crea (o se cambia de textura) solo cuando hace falta.
+    if (!escena.armaSprite) {
+      escena.armaSprite = escena.add.image(x, y, clave).setDepth(11)
+    } else if (escena.armaSprite.texture.key !== clave) {
+      escena.armaSprite.setTexture(clave)
+    }
+    var emp = arma.empunadura || { x: 0.79, y: 0.79 }
+    var t = transformeArma(MC.apuntar, pose.angulo, arma.spriteAngulo)
+    // 32 px de dibujo a la escala de su ficha (2 por defecto, la de la
+    // sección E.5), multiplicado por lo que crezca el gesto.
+    var k = (arma.escala || 2) * pose.escala * (32 / Math.max(1, escena.armaSprite.width || 32))
+    escena.armaSprite.setOrigin(emp.x, emp.y)
+    escena.armaSprite.setPosition(x, y)
+    escena.armaSprite.setRotation(t.rotacion)
+    escena.armaSprite.setScale(k, k * t.escalaY)
+    escena.armaSprite.setVisible(MC.activo)
+    escena.armaDibujo.setVisible(false)
+    return
+  }
+
+  // Sin dibujo, o mientras carga, o si falló: el emoji. Nunca un hueco.
+  if (escena.armaSprite) escena.armaSprite.setVisible(false)
   escena.armaDibujo.setText(arma.icono || '⚔️')
   escena.armaDibujo.setPosition(x, y)
   escena.armaDibujo.setRotation(MC.apuntar + pose.angulo * v)
@@ -362,7 +418,8 @@ async function mcCargarArma() {
   var r = await apiGet('/api/hotbar')
   if (!r.ok) return
   var sel = (r.data.ranuras || [])[r.data.seleccionada || 0]
-  if (!sel || !sel.arma) { MC.arma.icono = '👊'; return }
+  if (!sel || !sel.arma) { MC.arma.icono = '👊'; MC.arma.imagen = null; MC.arma.id = null; return }
+  MC.arma.id = sel.itemId
   MC.arma.icono = sel.icono || '⚔️'
   MC.arma.imagen = sel.imagen || null
   var p = await apiGet('/api/armas/' + sel.itemId)
@@ -373,6 +430,7 @@ async function mcCargarArma() {
     MC.arma.cadenciaMs = p.data.perfil.cadenciaMs
     MC.arma.spriteAngulo = p.data.perfil.spriteAngulo
     MC.arma.empunadura = p.data.perfil.empunadura
+    MC.arma.escala = p.data.perfil.escala || 2
   }
 }
 

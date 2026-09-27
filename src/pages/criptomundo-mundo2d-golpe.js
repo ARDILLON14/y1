@@ -117,4 +117,28 @@ function faseDeGolpe(golpe, ahora) {
 function volteoDeArma(dirApuntado) {
   return Math.cos(Number(dirApuntado) || 0) < 0 ? -1 : 1
 }
+
+// Cómo girar y voltear el DIBUJO del arma para que la hoja apunte hacia
+// donde apuntas.
+//
+// Los PNG no vienen dibujados mirando a la derecha: vienen en diagonal,
+// y cada uno declara a qué ángulo en su ficha (spriteAngulo; las tres
+// espadas del juego, −135°). Hay que descontarlo. Y al mirar a la
+// izquierda el dibujo se voltea EN VERTICAL, que al girarlo cambia el
+// signo con el que se descuenta.
+//
+// Las cuentas: con la hoja a ángulo S en el dibujo y queriendo que
+// acabe a ángulo A en pantalla,
+//   mirando a la derecha    girar A − S, sin voltear
+//   mirando a la izquierda  voltear en vertical (S pasa a −S) y girar A + S
+// En los dos casos la hoja termina en A. Es la misma transformación que
+// hace la arena con el canvas, escrita para un sprite de Phaser.
+function transformeArma(apuntar, poseAngulo, spriteAngulo) {
+  var ap = Number(apuntar); if (!isFinite(ap)) ap = 0
+  var pa = Number(poseAngulo); if (!isFinite(pa)) pa = 0
+  var S = Number(spriteAngulo); if (!isFinite(S)) S = -2.356
+  var v = volteoDeArma(ap)
+  var A = ap + pa * v
+  return { rotacion: v === 1 ? A - S : A + S, escalaY: v, hacia: A }
+}
 </script>`

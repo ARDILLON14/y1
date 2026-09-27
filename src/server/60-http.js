@@ -699,6 +699,9 @@ async function handleAPI(req, res, pathname, query) {
       empunadura: p2.empunadura, spriteAngulo: p2.spriteAngulo,
       icono: p2.icono, imagen: p2.imagen, nombre: p2.nombre,
       costeMp: p2.costeMp, autoGolpe: p2.autoGolpe,
+      // A qué escala se pinta el dibujo: la de su ficha, o 2, que es la
+      // de la sección E.5 del encargo.
+      escala: ((typeof fichaDeArma === 'function' && fichaDeArma(p2.id)) || {}).escala || 2,
     } })
   }
   if (pathname === '/api/hotbar/mover' && req.method === 'POST') {

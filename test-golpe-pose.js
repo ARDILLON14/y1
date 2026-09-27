@@ -99,6 +99,59 @@ async function run() {
      JSON.stringify(poseArma('espada', 'activa', 0.5, 1.6)) ===
      JSON.stringify(poseArma('espada', 'activa', 0.5, 1.6)))
 
+  console.log('\n── EL DIBUJO DEL ARMA: LA HOJA APUNTA HACIA DONDE APUNTAS ──')
+  // Los PNG vienen en diagonal y cada uno declara a qué ángulo (las tres
+  // espadas, −135°). La transformación tiene que descontarlo y, al
+  // voltear en vertical para mirar a la izquierda, cambiar el signo con
+  // el que lo descuenta. Si alguna de las dos cosas está mal, la hoja
+  // sale hacia atrás o hacia el suelo según hacia dónde mires.
+  //
+  // Se comprueba la propiedad que importa: se coge la hoja del dibujo
+  // (un vector a ángulo S), se le aplica lo que dice transformeArma
+  // —voltear y luego girar, que es el orden de Phaser— y se mira adónde
+  // acaba apuntando.
+  const { transformeArma } = ctx
+  ok('la transformación del dibujo está en la página', typeof transformeArma === 'function')
+  const S = -2.356
+  let peor = 0, dondePeor = ''
+  for (let g = -180; g < 180; g += 7.5) {
+    const ap = g * Math.PI / 180
+    for (const poseAng of [0, -1.2, 0.8]) {
+      const t = transformeArma(ap, poseAng, S)
+      // La hoja en el dibujo, volteada y girada.
+      let hx = Math.cos(S), hy = Math.sin(S) * t.escalaY
+      const rx = hx * Math.cos(t.rotacion) - hy * Math.sin(t.rotacion)
+      const ry = hx * Math.sin(t.rotacion) + hy * Math.cos(t.rotacion)
+      const acaba = Math.atan2(ry, rx)
+      const dif = Math.abs(((acaba - t.hacia + Math.PI * 3) % (Math.PI * 2)) - Math.PI)
+      if (dif > peor) { peor = dif; dondePeor = `apuntando ${g}°, pose ${poseAng}` }
+    }
+  }
+  ok('en las 48 direcciones y tres poses, la hoja acaba donde debe',
+     peor < 1e-9, 'peor desvío ' + peor.toFixed(4) + ' rad, ' + dondePeor)
+  ok('a la derecha no se voltea', transformeArma(0, 0, S).escalaY === 1)
+  ok('a la izquierda se voltea en vertical', transformeArma(Math.PI, 0, S).escalaY === -1)
+  ok('apuntando a la derecha en reposo, la hoja va hacia la derecha',
+     Math.abs(transformeArma(0, 0, S).hacia) < 1e-12)
+  // Un arma dibujada a 45° en vez de −135° también sale bien: el
+  // ángulo lo dice su ficha, no una constante escondida en el pintor.
+  const t45 = transformeArma(1.0, 0, 0.785)
+  const h45x = Math.cos(0.785), h45y = Math.sin(0.785) * t45.escalaY
+  const a45 = Math.atan2(h45x * Math.sin(t45.rotacion) + h45y * Math.cos(t45.rotacion),
+                         h45x * Math.cos(t45.rotacion) - h45y * Math.sin(t45.rotacion))
+  ok('un dibujo a 45° también acaba apuntando bien', Math.abs(a45 - 1.0) < 1e-9, String(a45))
+  const tb = transformeArma(NaN, null, 'x')
+  ok('con basura no saca NaN',
+     Number.isFinite(tb.rotacion) && Number.isFinite(tb.escalaY), JSON.stringify(tb))
+
+  console.log('\n── LA PANTALLA PINTA EL DIBUJO, NO SOLO EL EMOJI ──')
+  ok('carga la textura del arma', /escena\.load\.image\(clave, arma\.imagen\)/.test(mapa))
+  ok('y la coloca por su empuñadura, no por su centro',
+     /armaSprite\.setOrigin\(emp\.x, emp\.y\)/.test(mapa))
+  ok('girada con transformeArma', /transformeArma\(MC\.apuntar, pose\.angulo, arma\.spriteAngulo\)/.test(mapa))
+  ok('si no hay dibujo o falla, el emoji: nunca un hueco',
+     /MC_TEXTURAS\[arma\.id\] = 'rota'/.test(mapa) && /armaDibujo\.setText\(arma\.icono/.test(mapa))
+
   console.log('\n── LAS FASES SALEN DE LOS TIEMPOS DEL SERVIDOR ──')
   const g = { inicio: 1000, desde: 1130, hasta: 1230 }
   ok('antes de la ventana, anticipación', faseDeGolpe(g, 1000).fase === 'anticipacion')

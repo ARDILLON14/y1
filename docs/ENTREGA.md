@@ -8,8 +8,8 @@ La foto de partida está en `docs/AUDITORIA_V31.md` y no se reescribe: sirve
 para comparar. El relato largo de cada cambio, con el porqué, está en
 `CHANGELOG.md`.
 
-**Estado al cerrar:** 61 archivos de prueba · 1.700 comprobaciones · 0 fallos
-· ~190 s con `npm test`.
+**Estado al cerrar:** 61 archivos de prueba · 1.711 comprobaciones · 0 fallos
+· ~203 s con `npm test`.
 
 ---
 
@@ -1196,6 +1196,46 @@ existía y está cerrada en producción.
 
 **SIGUIENTE** · el arma con su PNG en la mano, y las dos mediciones de la
 sección 8.
+
+---
+
+## El arma, con su dibujo en la mano
+
+**POR QUÉ** · en el resumen de la FASE E dije que el arma iba con su emoji
+«porque falta el arte». No era verdad: las tres espadas **tienen PNG**,
+tienen la empuñadura comprobada contra su canal alfa (FASE G), y su perfil
+ya viajaba al cliente. Faltaba pintarlas, que es código.
+
+**ARCHIVOS TOCADOS** · `src/pages/criptomundo-mundo2d-golpe.js`,
+`criptomundo-mundo2d-combate.js`, `src/server/60-http.js`,
+`test-golpe-pose.js`.
+
+**QUÉ SE AÑADIÓ**
+
+- El sprite del arma, con el **origen en su empuñadura**: el punto donde
+  agarra la mano, no el centro del dibujo. Centrado, el arma queda
+  flotando medio sprite por delante del personaje.
+- **`transformeArma()`**, función pura. Los PNG vienen en diagonal (las
+  tres espadas, a −135°, y lo declara su ficha), así que hay que
+  descontar ese ángulo; y al mirar a la izquierda el dibujo se voltea en
+  vertical, lo que **cambia el signo** con el que se descuenta. Es la
+  misma transformación que hace la arena con el canvas, escrita para un
+  sprite.
+- Escala de la ficha del artista, o 2 por defecto (sección E.5).
+- Si no hay dibujo, está cargando o falla: el emoji. Nunca un hueco.
+
+**LA PRUEBA QUE IMPORTA** · no comprueba números sueltos: coge la hoja del
+dibujo, le aplica la transformación y mira **adónde acaba apuntando**, en
+48 direcciones y tres poses. Tiene que acabar exactamente donde apuntas.
+
+**SE COMPROBÓ QUE DETECTA** · se le metió el fallo típico —olvidar que el
+signo cambia al voltear— y la hoja salía **90° desviada** al mirar a la
+izquierda. La prueba lo marca con la dirección exacta donde falla.
+
+**PRUEBAS QUE PASAN** · 61 archivos · 1.711 comprobaciones · 0 fallos ·
+203 s.
+
+**SIGUIENTE** · las dos mediciones de la sección 8.
 
 ---
 
