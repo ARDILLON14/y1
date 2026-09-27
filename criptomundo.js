@@ -2392,6 +2392,54 @@ html,body{width:100%;height:100%;overflow:hidden;background:#05070A;}
 }
 #btn-accion:active { background:rgba(200,168,75,.34); }
 
+/* ── Pelear con el dedo ──────────────────────────────────────────
+   La regla R4 del encargo de combate dice "táctil tan jugable como
+   ratón", y hasta aquí no lo era: en el móvil te podías mover por el
+   mundo y no dar un solo golpe.
+
+   Dónde van. El pulgar derecho ya tiene el botón de interactuar abajo
+   del todo; atacar va justo encima y el escudo a su izquierda, los dos
+   dentro del arco natural del pulgar. La barra de objetos vive centrada
+   abajo y el joystick a la izquierda: ninguno de los cuatro se pisa.
+
+   72 px de ataque es lo que pide la sección E.2, y 56 el escudo: se usa
+   menos y no debe robarle sitio al que se usa todo el rato. Ninguno baja
+   de 44, que es el mínimo para un dedo. */
+#btn-atacar {
+  position:fixed; right:18px; bottom:116px; width:72px; height:72px;
+  border-radius:50%; background:rgba(200,64,48,.20);
+  border:2px solid rgba(240,110,90,.60); color:#F8A090;
+  font-size:26px; z-index:61; cursor:pointer;
+  touch-action:none; pointer-events:all; user-select:none;
+}
+#btn-atacar:active, #btn-atacar.pulsado {
+  background:rgba(200,64,48,.42); transform:scale(.94);
+}
+#btn-escudo {
+  position:fixed; right:100px; bottom:140px; width:56px; height:56px;
+  border-radius:50%; background:rgba(60,110,200,.18);
+  border:2px solid rgba(120,170,240,.55); color:#9CC4F8;
+  font-size:21px; z-index:61; cursor:pointer;
+  touch-action:none; pointer-events:all; user-select:none;
+}
+#btn-escudo:active, #btn-escudo.pulsado {
+  background:rgba(60,110,200,.40); transform:scale(.94);
+}
+/* Cuando el enemigo anuncia un golpe, el escudo se resalta. Es el mismo
+   aviso que ya existía en el combate por turnos, reutilizado aquí: sin
+   él, los 500 ms de ventana no los ve nadie en un teléfono. */
+#btn-escudo.avisa {
+  background:rgba(240,208,112,.30); border-color:#F0D070; color:#F0D070;
+  animation: latido-escudo .5s ease-in-out infinite;
+}
+@keyframes latido-escudo { 0%,100% { transform:scale(1) } 50% { transform:scale(1.12) } }
+/* En pantallas muy bajas, todo un poco más arriba para no tapar la
+   barra de objetos ni caer bajo el área segura del teléfono. */
+@media (max-height: 560px) {
+  #btn-atacar { width:64px; height:64px; bottom:104px; }
+  #btn-escudo { width:50px; height:50px; right:90px; bottom:124px; }
+}
+
 
 
 /* ===== CSS-MOVIL:INICIO (generado por aplicar-css-movil.js) ===== */
@@ -2523,6 +2571,8 @@ html,body{width:100%;height:100%;overflow:hidden;background:#05070A;}
   <div id="mando-tactil">
     <div id="joystick"><div id="joystick-punto"></div></div>
     <button id="btn-accion" aria-label="Interactuar">✋</button>
+    <button id="btn-atacar" aria-label="Atacar. Arrastra para apuntar">⚔️</button>
+    <button id="btn-escudo" aria-label="Bloquear">🛡️</button>
   </div>
 
   <canvas id="phaser-canvas"></canvas>
@@ -5610,6 +5660,7 @@ function mcActualizar(escena) {
   }
 
   mcDibujarArma(escena, ahora)
+  mcAvisoEscudo()
   mcPulso()
 }
 
@@ -5653,8 +5704,15 @@ function mcRaton(escena, punteroX, punteroY) {
 // TÁCTIL: si arrastras el dedo desde el botón, esa es la dirección. Si
 // solo tocas, apunta al monstruo vivo más cercano dentro de vez y media
 // el alcance del arma; y si no hay ninguno, hacia donde miras.
+//
+// El apuntado automático no es una comodidad: con un dedo tapando media
+// pantalla no se puede apuntar fino, y sin él pelear en el móvil sería
+// dar golpes al aire. Vez y media el alcance es a propósito: apunta a
+// lo que casi podrías tocar, no a lo que hay al otro lado del mapa.
+//
+// Devuelve si encontró a alguien, para que el botón pueda decirlo.
 function mcApuntarTactil(escena, dx, dy) {
-  if (Math.hypot(dx, dy) > 0.2) { MC.apuntar = Math.atan2(dy, dx); return }
+  if (Math.hypot(dx || 0, dy || 0) > 0.2) { MC.apuntar = Math.atan2(dy, dx); return true }
   var mejor = null, d = Infinity
   var alcance = (MC.arma.alcance || 60) * 1.5
   var ids = Object.keys(MC.monstruos)
@@ -5663,9 +5721,10 @@ function mcApuntarTactil(escena, dx, dy) {
     var dd = Math.hypot(m.x - escena.px, m.y - escena.py)
     if (dd < d && dd <= alcance) { d = dd; mejor = m }
   }
-  if (mejor) { MC.apuntar = Math.atan2(mejor.y - escena.py, mejor.x - escena.px); return }
+  if (mejor) { MC.apuntar = Math.atan2(mejor.y - escena.py, mejor.x - escena.px); return true }
   var dir = { right: 0, left: Math.PI, up: -Math.PI / 2, down: Math.PI / 2 }
   MC.apuntar = dir[escena.lastDir] != null ? dir[escena.lastDir] : 0
+  return false
 }
 
 // Empezar a pegar. La animación arranca AQUÍ, en local: medido, de
@@ -5740,6 +5799,98 @@ window.addEventListener('load', function () {
 })
 // Cambiar de arma en la barra cambia lo que se dibuja en la mano.
 window.addEventListener('cm-arma-cambiada', function () { mcCargarArma() })
+
+// ── Los botones del dedo ───────────────────────────────────────────
+//
+// R4 del encargo: "táctil tan jugable como ratón". Hasta aquí no lo era:
+// en un teléfono te movías por el mundo y no podías dar un golpe. La
+// función de apuntado táctil estaba escrita y no la llamaba nadie.
+//
+// El botón de atacar hace dos cosas con el mismo dedo: si lo tocas y
+// sueltas, pega hacia el bicho más cercano; si arrastras sin soltar,
+// apuntas hacia donde arrastres y sigues pegando. Es lo que pide la
+// sección E.2 y lo que hace que se pueda retroceder pegando.
+function mcMontarBotonesTactiles() {
+  var atacar = document.getElementById('btn-atacar')
+  var escudo = document.getElementById('btn-escudo')
+  if (!atacar || !escudo) return
+
+  var centroAtacar = null
+
+  function dondeEmpieza(el) {
+    var r = el.getBoundingClientRect()
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2 }
+  }
+  function puntoDe(ev) {
+    var t = ev.changedTouches ? ev.changedTouches[0] : ev
+    return { x: t.clientX, y: t.clientY }
+  }
+
+  function apuntarDesde(ev) {
+    if (!gameScene || !centroAtacar) return
+    var p = puntoDe(ev)
+    var dx = p.x - centroAtacar.x, dy = p.y - centroAtacar.y
+    // Menos de 18 px es un toque, no un arrastre: el dedo se mueve solo.
+    if (Math.hypot(dx, dy) < 18) mcApuntarTactil(gameScene, 0, 0)
+    else mcApuntarTactil(gameScene, dx, dy)
+  }
+
+  function empezarAtaque(ev) {
+    centroAtacar = dondeEmpieza(atacar)
+    atacar.classList.add('pulsado')
+    apuntarDesde(ev)
+    mcPulsar(true)
+    ev.preventDefault()
+  }
+  function seguirAtaque(ev) {
+    if (!centroAtacar) return
+    apuntarDesde(ev)
+    // Mantener pulsado repite el golpe; el servidor no deja pasar de la
+    // cadencia, así que aquí solo hay que no soltar.
+    mcPulsar(true)
+    ev.preventDefault()
+  }
+  function soltarAtaque(ev) {
+    centroAtacar = null
+    atacar.classList.remove('pulsado')
+    mcPulsar(false)
+    if (ev && ev.preventDefault) ev.preventDefault()
+  }
+
+  atacar.addEventListener('touchstart', empezarAtaque, { passive: false })
+  atacar.addEventListener('touchmove', seguirAtaque, { passive: false })
+  atacar.addEventListener('touchend', soltarAtaque, { passive: false })
+  atacar.addEventListener('touchcancel', soltarAtaque, { passive: false })
+  // Con ratón también, para poder probarlo sin un teléfono delante.
+  atacar.addEventListener('mousedown', empezarAtaque)
+  window.addEventListener('mouseup', function (e) { if (centroAtacar) soltarAtaque(e) })
+
+  function empezarEscudo(ev) { escudo.classList.add('pulsado'); mcBloquear(true); ev.preventDefault() }
+  function soltarEscudo(ev) { escudo.classList.remove('pulsado'); mcBloquear(false); if (ev && ev.preventDefault) ev.preventDefault() }
+  escudo.addEventListener('touchstart', empezarEscudo, { passive: false })
+  escudo.addEventListener('touchend', soltarEscudo, { passive: false })
+  escudo.addEventListener('touchcancel', soltarEscudo, { passive: false })
+  escudo.addEventListener('mousedown', empezarEscudo)
+  window.addEventListener('mouseup', soltarEscudo)
+
+  // Si el dedo se va de la pantalla o la pestaña pierde el foco, se
+  // sueltan los dos. Sin esto te quedabas bloqueando para siempre.
+  window.addEventListener('blur', function () { soltarAtaque(); soltarEscudo() })
+}
+
+// El escudo se resalta cuando algún monstruo anuncia. Es lo único que
+// hace visible la ventana de 500 ms en un teléfono, donde no hay
+// registro de texto que leer mientras peleas.
+function mcAvisoEscudo() {
+  var escudo = document.getElementById('btn-escudo')
+  if (!escudo) return
+  var alguno = false
+  var ids = Object.keys(MC.monstruos)
+  for (var i = 0; i < ids.length; i++) if (MC.monstruos[ids[i]].avisando) alguno = true
+  escudo.classList.toggle('avisa', alguno)
+}
+
+window.addEventListener('load', function () { setTimeout(mcMontarBotonesTactiles, 700) })
 </script>`
 
 // Los números de daño que suben y se desvanecen.

@@ -8,8 +8,8 @@ La foto de partida está en `docs/AUDITORIA_V31.md` y no se reescribe: sirve
 para comparar. El relato largo de cada cambio, con el porqué, está en
 `CHANGELOG.md`.
 
-**Estado al cerrar:** 59 archivos de prueba · 1.637 comprobaciones · 0 fallos
-· ~186 s con `npm test`.
+**Estado al cerrar:** 60 archivos de prueba · 1.672 comprobaciones · 0 fallos
+· ~191 s con `npm test`.
 
 ---
 
@@ -1089,6 +1089,65 @@ vuelve a LINEAR salvo que su ficha diga `pixelArt: true`.
   una guía para hacerlos, pero dibujarlos sigue sin poder hacerlo yo.
 - El arma en la mano se pinta con su emoji: el PNG con empuñadura es lo
   siguiente, y ya no está bloqueado (la ficha y el visor existen).
+
+---
+
+## R4 — Pelear con el dedo
+
+**POR QUÉ ESTE PASO EXISTE** · al repasar si el combate estaba terminado
+salió que no, y esto era lo peor de lo que faltaba: **en un teléfono te
+movías por el mundo y no podías dar un solo golpe**. La regla R4 del
+encargo —«táctil tan jugable como ratón»— está en la tabla de las que no
+se rompen, y la rompí.
+
+Y de la peor manera: la función de apuntado táctil (`mcApuntarTactil`)
+**estaba escrita y no la llamaba nadie**. Código muerto que parece hecho,
+que es peor que código que falta, porque nadie va a buscarlo.
+
+**ARCHIVOS TOCADOS** · `src/pages/criptomundo-mundo2d.js`,
+`criptomundo-mundo2d-combate.js`, `test-tactil-combate.js` (nuevo),
+`run-tests.js`.
+
+**QUÉ SE AÑADIÓ**
+
+- **Botón de atacar de 72 px** a la derecha, el tamaño que pide la
+  sección E.2, y **botón de escudo de 56** a su izquierda. Los dos
+  dentro del mando táctil, que ya se escondía solo cuando hay ratón.
+- **Un dedo, dos cosas.** Tocar y soltar pega hacia el monstruo más
+  cercano; arrastrar sin soltar apunta hacia donde arrastres y sigue
+  pegando. Es lo que permite retroceder pegando, que en el móvil es la
+  única forma de no comerse todo.
+- **El apuntado automático** solo mira a vez y media el alcance del
+  arma: apunta a lo que casi podrías tocar, no a lo que hay al otro lado
+  del mapa. Con un dedo tapando media pantalla no se puede apuntar fino,
+  así que sin esto pelear en el móvil sería dar golpes al aire.
+- **Un temblor de menos de 18 px no es un arrastre.** El dedo se mueve
+  solo al pulsar; sin ese umbral, tocar el botón te desviaba la
+  puntería.
+- **El escudo se resalta cuando un enemigo anuncia.** Es lo único que
+  hace visible la ventana de 500 ms en un teléfono, donde no hay
+  registro de texto que leer mientras peleas. Reutiliza el aviso que ya
+  existía en el combate por turnos.
+- **Nada se queda pulsado**: perder el foco o que el toque se cancele
+  suelta los dos. Era el camino directo a quedarse bloqueando para
+  siempre.
+
+**PRUEBAS AÑADIDAS** · `test-tactil-combate.js` (35). Ejecuta el código
+de verdad contra un DOM de mentira y le manda toques: que tocar apunte
+al bicho, que arrastrar mande sobre el bicho, que un temblor no cuente,
+que sin nadie cerca apunte hacia donde miras, que uno a 800 px no se
+apunte solo, que el escudo avise, y que perder el foco lo suelte todo.
+También que los botones no se solapen entre ellos ni con el de
+interactuar que ya estaba.
+
+**SE COMPROBÓ QUE DETECTA** · contra el código anterior fallan **9** de
+las 35.
+
+**PRUEBAS QUE PASAN** · 60 archivos · 1.672 comprobaciones · 0 fallos ·
+191 s.
+
+**SIGUIENTE** · las pruebas de los proyectiles del mundo, el arma con su
+PNG en la mano, y las dos mediciones de la sección 8 que no hice.
 
 ---
 

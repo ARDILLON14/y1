@@ -4,6 +4,28 @@ Cada versión con lo que la motivó. Los detalles completos están en `docs/CAMB
 
 ## v33 (en curso) — Combate estilo Terraria y barra de objetos
 
+### En el móvil no se podía pelear, y la regla decía que sí
+
+Al repasar si el combate estaba terminado apareció esto: en un teléfono
+te podías mover por el mundo y no dar un solo golpe. La regla que dice
+"táctil tan jugable como ratón" estaba en la lista de las que no se
+rompen, y estaba rota.
+
+Lo peor no es que faltara: es que la función de apuntado con el dedo
+estaba escrita y no la llamaba nadie. Código muerto que parece hecho, que
+engaña más que el código que falta.
+
+Ahora hay un botón de atacar y otro de escudo. El de atacar hace dos
+cosas con el mismo dedo: si lo tocas, pega hacia el bicho más cercano; si
+arrastras sin soltar, apuntas hacia donde arrastres y sigues pegando —que
+es la única forma de retroceder pegando en una pantalla táctil. Un
+movimiento de menos de dieciocho píxeles no cuenta como arrastre, porque
+el dedo se mueve solo al pulsar.
+
+Y el escudo se ilumina cuando un enemigo anuncia. En un teléfono nadie va
+a leer el registro de texto en mitad de una pelea: sin eso, la ventana de
+medio segundo para bloquear no la ve nadie.
+
 ### El tutorial enseña la barra antes de pedirte que bebas
 
 Hay un paso nuevo, justo antes de los de bloquear y beber: elegir un arma
