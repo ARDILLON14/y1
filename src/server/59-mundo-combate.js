@@ -47,6 +47,44 @@ const MAPA_MUNDO = { ancho: MUNDO_ANCHO, alto: MUNDO_ALTO }
 // decidió el STEP 12.
 const CORREA_PX = 320
 
+// ── La escala del mundo ────────────────────────────────────────────
+//
+// Cada sitio donde se pelea tiene la suya, porque cada uno pelea
+// distinto:
+//
+//   ESCALA_TURNOS  vida ×1,6  daño ×1,4   (30-personajes-combate.js)
+//   ESCALA_ARENA   vida ×1,4  daño ×0,65  (58-arena.js)
+//   ESCALA_MUNDO   daño ×…                 aquí
+//
+// Y el mundo NO puede copiar la de los turnos, por un motivo de fondo:
+// los turnos ajustan al bicho a CADA jugador (seguimientoDe), y en el
+// mundo el monstruo es compartido. No puede tener una vida distinta
+// para cada uno de los que le pegan. Así que lleva una escala fija.
+//
+// El número no es de criterio: se calibra midiendo la vida que se
+// pierde por pelea en los dos sistemas (npm run nivel3 -- --pelea) y
+// moviendo SOLO este dial hasta que cuadren. Los turnos no se tocan.
+//
+// Vida perdida en una pelea contra una araña, nivel 1, solo pegando,
+// mediana de 40 peleas (en turnos: 548):
+//
+//     ×3 → 324 (−41 %)   ×4 → 432 (−21 %)   ×5 → 540 (−1 %)
+//     ×5,5 → 596 (+9 %)  ×6 → 648 (+18 %)
+//
+// POR QUÉ TAN ALTO. En turnos la araña muerde en cada turno, unas ocho
+// veces por pelea, y lleva además la escala de los turnos (×1,4). En el
+// mundo muerde unas DOS: anuncia cada golpe medio segundo y el jugador
+// la mata en tres. Para costar lo mismo por pelea, cada mordisco tiene
+// que valer bastante más. Y está bien que así sea: aquí CADA golpe se
+// anuncia y se puede bloquear (−70 %) o esquivar apartándose, así que un
+// golpe grande que se ve venir es justo, y hace que bloquear importe.
+//
+// Antes de poder calibrar hubo que arreglar trabar(): con el valor en 1
+// el jugador que solo pegaba perdía CERO de vida, porque cada golpe le
+// cortaba el aviso a la araña y no llegaba a morder nunca. Con cero,
+// ningún dial arregla nada.
+const ESCALA_MUNDO = { daño: 5 }
+
 // Cuánto tarda en volver un monstruo muerto. Lo bastante para que matar
 // signifique algo y lo bastante poco para que la zona no se vacíe.
 const REAPARECER_MS = 25000
@@ -200,11 +238,12 @@ function crearMonstruo(zona, monsterId, sitio) {
     nombre: m.name, icono: m.icon, nivel: m.level,
     x: sitio.x, y: sitio.y, casaX: sitio.x, casaY: sitio.y,
     vx: 0, vy: 0, ex: 0, ey: 0,
-    // La vida y el daño son LOS MISMOS del combate por turnos. Sin
-    // escalas: la arena tiene la suya porque una arena es un encuentro
-    // entero, y el mundo no lo es.
+    // La vida sale del catálogo tal cual y el daño pasa por la escala
+    // del mundo. Ver ESCALA_MUNDO: aquí ponía que eran "los mismos del
+    // combate por turnos", y no lo eran — los turnos llevan su propia
+    // escala (ESCALA_TURNOS) y esto usaba los números a pelo.
     hp: m.hp, hpMax: m.hp,
-    dmg: Math.round((m.atk[0] + m.atk[1]) / 2),
+    dmg: Math.round((m.atk[0] + m.atk[1]) / 2 * ESCALA_MUNDO.daño),
     def: m.def,
     radio: c.radio, golpeable: c.radio,
     vel: c.vel, alcance: c.alcance, cadenciaMs: c.cadenciaMs,
@@ -561,12 +600,30 @@ function trabar(m, dañoReal, ahora) {
   const car = caracterDe(m.monsterId)
   const peso = dañoReal / Math.max(1, m.hpMax)
   if (peso < 0.06 * (car.aguante || 1)) return
-  if (m.proxTraba && ahora < m.proxTraba) return
+  const aturde = peso > 0.30
+
+  // UN RASGUÑO NO CORTA UN GOLPE YA COMPROMETIDO. Solo un aturdimiento.
+  //
+  // Es la regla que la arena ya se ganó midiendo (ver el comentario de
+  // PESO en 56-ia-enemigos.js: TELEGRAPH por encima de HURT), y la misma
+  // de los turnos, donde solo una habilidad que aturde interrumpe el
+  // golpe anunciado. Aquí la rompí: cada golpe que trababa al bicho le
+  // cancelaba el aviso. Con una daga pegando cada 300 ms y un aviso de
+  // 500, la araña NO LLEGABA A MORDER NUNCA. Medido: una pelea entera a
+  // nivel 1 sin perder un solo punto de vida. Y bloquear salía MÁS caro
+  // que no bloquear, porque dejar de pegar era justo lo que le permitía
+  // terminar el golpe. La mecánica que el STEP 21 demostró que decide
+  // el juego, invertida.
+  if (m.estado === 'avisa' && !aturde) return
+
+  // El descanso entre trabas evita encadenar a un bicho indefinidamente;
+  // el aturdimiento se lo salta a propósito, porque es la jugada del
+  // jugador y no un accidente. Igual que herir() en la arena.
+  if (!aturde && m.proxTraba && ahora < m.proxTraba) return
   m.proxTraba = ahora + 2.5 * (car.trabaMs || 200)
-  // Un golpe muy gordo aturde en vez de trabar, y dura más.
-  m.trabadoHasta = ahora + (peso > 0.30 ? 700 : (car.trabaMs || 200))
-  // Y retrasa su siguiente ataque: es la jugada del jugador.
+  m.trabadoHasta = ahora + (aturde ? 700 : (car.trabaMs || 200))
   m.proxAtaque = Math.max(m.proxAtaque, m.trabadoHasta)
+  // Solo se llega aquí avisando si el golpe aturde: entonces sí, corta.
   if (m.estado === 'avisa') m.estado = 'persigue'
 }
 

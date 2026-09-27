@@ -8,8 +8,8 @@ La foto de partida está en `docs/AUDITORIA_V31.md` y no se reescribe: sirve
 para comparar. El relato largo de cada cambio, con el porqué, está en
 `CHANGELOG.md`.
 
-**Estado al cerrar:** 61 archivos de prueba · 1.711 comprobaciones · 0 fallos
-· ~203 s con `npm test`.
+**Estado al cerrar:** 62 archivos de prueba · 1.729 comprobaciones · 0 fallos
+· ~191 s con `npm test`.
 
 ---
 
@@ -1259,8 +1259,16 @@ medir otro árbol, y así se midió el código de **antes del encargo**.
 |---|---|---|
 | solo pega, descansando | 35 ataques · 0 muertes | 35 · 0 |
 | robot, descansando | 36 · 0 | 36 · 0 |
-| solo pega, sin parar | 50 · **4 muertes** | 50 · 4 |
-| robot, sin parar | 43 · 2 | 43 · 2 |
+| solo pega, sin parar | 47 · **4 muertes** | 47 · 4 |
+| robot, sin parar | 40 · 2 | 40 · 2 |
+
+> **Corregido en el paso siguiente.** La primera versión del medidor, al
+> morir en turnos, abría una batalla nueva con una araña entera. El juego
+> no hace eso: deja la misma batalla activa, cura al bicho media vida y
+> te devuelve con la mitad (la regla del STEP 12). Con el medidor
+> arreglado las medianas se quedan en 4 y 2 muertes —el máximo baja de
+> 10 a 6, que eran espirales que el juego no tiene— y los ataques en 47
+> y 40. Antes y después del encargo siguen siendo idénticos.
 
 Lo que existía no se ha movido ni una unidad. Y las 4 muertes sin parar
 son **exactamente** las del STEP 21: el medidor reproduce lo que ya se
@@ -1271,7 +1279,7 @@ sabía, que es la prueba de que mide bien.
 | hasta nivel 3 | turnos | mundo | desvío |
 |---|---|---|---|
 | ataques (solo pega, descansando) | 35 | 71 | **+103 %** |
-| ataques (solo pega, sin parar) | 50 | 71 | **+42 %** |
+| ataques (solo pega, sin parar) | 47 | 71 | **+51 %** |
 | muertes (solo pega, sin parar) | 4 | 0 | **−100 %** |
 | tiempo de juego (solo pega, sin parar) | 75 s | 21 s | **−72 %** |
 
@@ -1296,6 +1304,125 @@ los monstruos, igual que la arena ya tiene la suya
 encuentro entero»). No es un sistema nuevo: es el mismo patrón. Medir la
 vida que se pierde por pelea en turnos y en el mundo, y ajustar **un solo
 dial del mundo** hasta que cuadren, sin tocar los turnos.
+
+---
+
+## R2 — Calibrar el mundo: un dial, y un fallo que lo hacía imposible
+
+**LO QUE SE ACORDÓ** · igualar lo peligroso que es el mundo con los
+turnos midiendo la vida que se pierde **por pelea**, y moviendo **un solo
+dial del mundo**, sin tocar los turnos.
+
+**ARCHIVOS TOCADOS** · `src/server/59-mundo-combate.js`, `medir-nivel3.js`,
+`medir-mundo.js`, `test-mundo-equilibrio.js` (nuevo), `test-build.js`,
+`run-tests.js`.
+
+### Primero: con el dial en cualquier valor, no se podía
+
+Midiendo una pelea aislada contra una araña a nivel 1, el que **solo
+pega perdía 0 de vida**. Cero. Y el que bloqueaba perdía **más**. Con cero,
+ningún multiplicador arregla nada.
+
+La causa era mía: al portar la traba de la arena al mundo (`trabar()`)
+reintroduje un fallo que **la arena ya había encontrado y arreglado**
+(comentario de `PESO` en `56-ia-enemigos.js`): cualquier golpe que trabara
+al bicho le cortaba el golpe que estaba anunciando. Con una daga pegando
+cada 300 ms y un aviso de 500, la araña no llegaba a morder nunca. Y
+bloquear salía caro porque dejar de pegar era justo lo que le dejaba
+terminar el golpe: la mecánica que el STEP 21 demostró que decide el
+juego, al revés.
+
+Ahora rige la regla de la arena, que es también la de los turnos: **un
+rasguño no corta un golpe ya comprometido; solo un aturdimiento** (más del
+30 % de su vida).
+
+### Segundo: una escala propia para el mundo, y por qué no puede ser la de los turnos
+
+Los turnos llevan `ESCALA_TURNOS` (daño ×1,4) y además ajustan al bicho a
+**cada jugador** (`seguimientoDe`). En el mundo el monstruo es compartido:
+no puede tener una vida distinta para cada uno de los que le pegan. Así
+que necesita una escala fija propia, `ESCALA_MUNDO`, igual que la arena
+tiene la suya.
+
+De paso, corrijo lo que escribí en la FASE C: que el mundo usaba «los
+mismos números del combate por turnos». No era verdad; usaba los del
+catálogo a pelo.
+
+### Tercero: el dial
+
+Vida perdida por pelea contra una araña, nivel 1, solo pegando, mediana de
+40 peleas. En turnos: **548**.
+
+| ESCALA_MUNDO.daño | mundo | desvío |
+|---|---|---|
+| ×3 | 324 | −41 % |
+| ×4 | 432 | −21 % |
+| **×5** | **540** | **−1 %** |
+| ×6 | 648 | +18 % |
+
+**Queda en ×5.** Parece mucho y tiene motivo: en turnos la araña muerde en
+cada turno, unas ocho veces por pelea; en el mundo, unas dos, porque
+anuncia cada golpe medio segundo y el jugador la mata en tres. Cada
+mordisco tiene que valer más para costar lo mismo. Y es justo que sea
+así: aquí **cada** golpe se anuncia y se puede bloquear o esquivar.
+
+**Bloquear ahora sale a cuenta**: 540 sin bloquear, **243 bloqueando**, un
+55 % menos. En turnos, en una pelea corta, bloquear apenas cambia nada
+(548 frente a 540), porque solo se anuncia un golpe de cada tres.
+
+### Cuarto: hasta nivel 3
+
+| sin parar, muertes | turnos | mundo, solo arañas | mundo, bosque real |
+|---|---|---|---|
+| solo pega | 4 | 1 | 3 |
+| robot | 2 | 0 | 1 |
+
+Comparando lo comparable —**solo arañas**, que es contra lo que pelea la
+medida de turnos— el mundo queda algo más seguro sin descansar. No he
+aislado por qué; la diferencia es de muy pocas muertes y la pelea del
+mundo tiene mucha menos variación que la de los turnos, que tira dados en
+cada golpe.
+
+### Lo que no es del dial: los trolls del bosque
+
+En el bosque de verdad **también hay trolls**, de nivel 5, y un nivel 1 no
+puede elegir no pelear con ellos: en turnos eliges contrincante; en el
+mundo te persiguen. Descansando entre peleas, en turnos no muere nadie y
+en el bosque real se muere 3 veces, casi todas contra trolls.
+
+**Primero sospeché otra cosa y lo medí antes de tocarla**: que al
+acercarte a una araña despertabas a las de al lado, por el radio de visión
+que decidí mantener en la auditoría (D5). Bajándolo de 620 a 300 y a 200 px,
+las muertes del que solo pega se quedan en 3, 5 y 3. No es eso. **No he
+tocado el radio.**
+
+Que haya trolls de nivel 5 en la zona de nivel 1 es una decisión de
+diseño del mundo (`ZONES.forest`), no de este dial.
+
+### Lo que impide que esto se deshaga
+
+`test-mundo-equilibrio.js` (18): la escala de los turnos y de la arena no
+se han movido; un golpe de daga no corta el aviso y uno que aturde sí; la
+araña del mundo **llega a morder**; la vida por pelea no se desvía más de
+un **15 %** de la de los turnos (la regla R2, convertida en prueba); y
+bloquear ahorra al menos un 30 %. Tarda medio segundo: carga el servidor
+con reloj propio. **Se comprobó que detecta**: con la traba vieja salta en
+6 comprobaciones (la araña vuelve a morder 0), y con el dial en ×3 salta
+con un −42 %.
+
+### Correcciones a cosas que dije antes
+
+- **La tabla de la FASE C** («bloquear ahorra el 77 %, 176 → 40») se midió
+  con el fallo de la traba dentro. Ya no vale; la buena es la de arriba.
+- **La medida por HTTP** (`npm run mundo`) enseña ahora de quién viene el
+  daño. En el bosque real sale mucho más ruidosa que la aislada, porque se
+  unen otros bichos a la pelea. Es la aislada la que calibra.
+- **`test-build`** buscaba `npm run [a-z-]+`: cortaba `nivel3` en `nivel`
+  (falso aviso) y `arte:ver` en `arte` (que existe, así que pasaba sin
+  haber mirado el de verdad). Arreglado.
+
+**PRUEBAS QUE PASAN** · 62 archivos · 1.729 comprobaciones · 0 fallos ·
+191 s.
 
 ---
 

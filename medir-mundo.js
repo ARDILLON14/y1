@@ -64,6 +64,10 @@ async function pelea(bloqueando) {
   const hp0 = (await req('GET', '/api/player', null, j.ck)).b.character.hp
   let obj = { x: ar.x, y: ar.y }, golpes = [], muerta = false, t0 = Date.now()
   let recibido = 0, bloqueos = 0
+  // De quién viene el daño. El bosque no tiene solo arañas: sin esto,
+  // la vida perdida "contra una araña" podía ser la de un troll que se
+  // había unido a la pelea, y nadie lo sabría.
+  const porTipo = {}, tipoDe = {}
   for (let i = 0; i < 250 && !muerta; i++) {
     const yo = await donde(j)
     const ang = Math.atan2(obj.y - yo.y, obj.x - yo.x)
@@ -77,7 +81,12 @@ async function pelea(bloqueando) {
       : { ax: Math.cos(ang), ay: Math.sin(ang), pulsado: true }
     const r = await req('POST', '/api/mundo/combate', { pos: { zona: 'forest', x: yo.x, y: yo.y }, entrada }, j.ck)
     st = r.b
+    for (const m of (r.b.monstruos || [])) tipoDe[m.id] = m.tipo
     for (const s of (r.b.sucesos || [])) {
+      if (s.tipo === 'dano_jugador' && s.a === j.u) {
+        const t = tipoDe[s.de] || '?'
+        porTipo[t] = (porTipo[t] || 0) + s.cantidad
+      }
       if (s.tipo === 'dano' && s.a === ar.id) golpes.push(s.cantidad)
       if (s.tipo === 'dano' && s.a === 'yo') { recibido += s.cantidad; if (s.bloqueado) bloqueos++ }
       if (s.tipo === 'muerte_monstruo' && s.id === ar.id) muerta = true
@@ -90,7 +99,7 @@ async function pelea(bloqueando) {
   const hp1 = (await req('GET', '/api/player', null, j.ck)).b.character.hp
   return {
     muerta, ms: Date.now() - t0, golpes: golpes.length,
-    porGolpe: media(golpes), vidaPerdida: hp0 - hp1, recibido, bloqueos,
+    porGolpe: media(golpes), vidaPerdida: hp0 - hp1, recibido, bloqueos, porTipo,
   }
 }
 
@@ -124,6 +133,8 @@ async function main() {
   console.log(`  sin bloquear   ${sin.muerta ? 'muerta' : 'VIVA'} en ${(sin.ms / 1000).toFixed(1)}s · ${sin.golpes} golpes de ${sin.porGolpe.toFixed(1)} · vida perdida ${sin.vidaPerdida}`)
   const con = await pelea(true)
   console.log(`  bloqueando     ${con.muerta ? 'muerta' : 'VIVA'} en ${(con.ms / 1000).toFixed(1)}s · ${con.golpes} golpes de ${con.porGolpe.toFixed(1)} · vida perdida ${con.vidaPerdida} · ${con.bloqueos} bloqueos`)
+  const desglose = r => Object.entries(r.porTipo).map(([t, v]) => t.replace('m_', '') + ' ' + v).join(' · ') || 'nadie'
+  console.log('  de quién viene el daño  sin bloquear: ' + desglose(sin) + '   ·   bloqueando: ' + desglose(con))
   if (sin.vidaPerdida > 0) {
     const ahorro = ((sin.vidaPerdida - con.vidaPerdida) / sin.vidaPerdida * 100)
     console.log(`  bloquear ahorra ${ahorro.toFixed(0)} % de la vida perdida`)

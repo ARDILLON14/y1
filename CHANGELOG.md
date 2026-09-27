@@ -4,6 +4,33 @@ Cada versión con lo que la motivó. Los detalles completos están en `docs/CAMB
 
 ## v33 (en curso) — Combate estilo Terraria y barra de objetos
 
+### Las arañas del mundo no mordían nunca
+
+Al ir a calibrar la dificultad del mundo apareció que no había nada que
+calibrar: en una pelea contra una araña, el que solo pegaba no perdía ni
+un punto de vida. Cada golpe del jugador le cortaba a la araña el ataque
+que estaba anunciando, y con una daga que pega cada tres décimas de
+segundo, la araña no terminaba ninguno. Bloquear era peor que no
+bloquear, porque dejar de pegar le daba tiempo a morder.
+
+La arena ya había tenido este mismo fallo y lo había resuelto con una
+regla: un rasguño no interrumpe un golpe ya lanzado; solo un golpe que
+aturde. El mundo la había perdido al copiar el código. Ahora la tiene.
+
+### El mundo tiene su propia escala de daño
+
+Con las arañas mordiendo de nuevo, se ajustó un solo número —el daño de
+los monstruos del mundo— hasta que una pelea contra una araña cuesta la
+misma vida que en el combate por turnos. Queda en cinco veces el del
+catálogo, y parece mucho hasta que se cuenta: en turnos la araña te
+muerde ocho veces por pelea, y en el mundo dos, porque cada golpe se
+anuncia medio segundo antes. Cada mordisco tiene que doler más, y está
+bien que duela, porque ahora se puede ver venir y bloquear. Bloquear
+ahorra más de la mitad del daño.
+
+Queda una cosa que no es de este número: en el bosque también hay trolls
+de nivel 5, y en el mundo no se puede elegir no pelear con ellos.
+
 ### Una varita de magia pegaba como puños
 
 Al probar los proyectiles del mundo —que no tenían ni una prueba— salió

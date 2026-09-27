@@ -104,7 +104,11 @@ check('las guías no mandan ejecutar archivos que no existen', inexistentes.leng
 const scripts = Object.keys(JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).scripts)
 const npmFantasma = []
 for (const [f, c] of vivos) {
-  for (const m of c.matchAll(/npm run ([a-z\-]+)/g)) {
+  // Los nombres de script llevan cifras y dos puntos (nivel3, arte:ver,
+  // test:serie). El patrón de antes era [a-z-]+: cortaba "nivel3" en
+  // "nivel" y daba un falso aviso, y cortaba "arte:ver" en "arte" —que
+  // SÍ existe— y pasaba de casualidad sin haber mirado el de verdad.
+  for (const m of c.matchAll(/npm run ([a-z0-9:_\-]*[a-z0-9_])/g)) {
     if (!scripts.includes(m[1])) npmFantasma.push(`${f} → npm run ${m[1]}`)
   }
 }
