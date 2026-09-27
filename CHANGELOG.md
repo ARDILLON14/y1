@@ -28,8 +28,15 @@ anuncia medio segundo antes. Cada mordisco tiene que doler más, y está
 bien que duela, porque ahora se puede ver venir y bloquear. Bloquear
 ahorra más de la mitad del daño.
 
-Queda una cosa que no es de este número: en el bosque también hay trolls
-de nivel 5, y en el mundo no se puede elegir no pelear con ellos.
+### Los trolls del bosque, al fondo
+
+En el bosque del mundo hay trolls de nivel 5 en una zona de nivel 1, y
+estaban a doscientos píxeles de donde aparece el jugador: entrabas y se te
+echaban encima. Siguen en el bosque, pero ahora viven al fondo, en el
+oeste, lejos de la entrada y del camino a las salidas. Si no vas a
+buscarlos, no te ven. Las arañas no se han movido. Un jugador que pelea
+sin parar hasta nivel 3 moría 38 veces; ahora, 7, lo mismo que si en el
+bosque solo hubiera arañas.
 
 ### Una varita de magia pegaba como puños
 

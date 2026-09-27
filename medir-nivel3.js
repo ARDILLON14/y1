@@ -155,7 +155,12 @@ function aNivel3Mundo(S, robot, descansa = true) {
   S.store.players[u] = { username: u, character: char }
   S.hotbarDe(char)                // daga en la 0, poción en la 9
   S.seleccionarRanura(char, 0)
-  const pos = { x: 300, y: 300 }  // una esquina del bosque, lejos de todo
+  // Donde aparece un jugador de verdad: el centro de la zona (la página
+  // lo pone ahí al cargarla). Antes esto empezaba en (300, 300), "una
+  // esquina lejos de todo", que no es por donde entra nadie... y que
+  // ahora es la puerta de la guarida de los trolls.
+  const ENTRADA = { x: 900, y: 600 }
+  const pos = { ...ENTRADA }
   if (SOLO_ARANAS || VISTA != null) {
     const z = S.sembrarZona('forest')
     if (SOLO_ARANAS) z.monstruos = z.monstruos.filter(m => m.monsterId === 'm_spider')
@@ -180,7 +185,7 @@ function aNivel3Mundo(S, robot, descansa = true) {
       muertes++
       resucitar(S, char)
       // Resucitas en la entrada de la zona, no encima del bicho.
-      pos.x = 300; pos.y = 300; entrar()
+      pos.x = ENTRADA.x; pos.y = ENTRADA.y; entrar()
       if (descansa) descansar(S, char, () => S.enCombateMundo(u))
       continue
     }

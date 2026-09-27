@@ -61,7 +61,7 @@ const PRUEBAS = [
   // un contexto aislado y prueban funciones puras. El puerto que se les
   // pasa no lo usan, pero la tabla es una sola y así sigue siéndolo.
   ['test-armas-perfil', 3897], ['test-barra-datos', 3898],
-  ['test-mundo-tiempo-real', 3899], ['test-hotbar', 3903], ['test-golpe-pose', 3904], ['test-arte-armas', 3905], ['test-tactil-combate', 3906], ['test-mundo-proyectiles', 3907], ['test-mundo-equilibrio', 3908],
+  ['test-mundo-tiempo-real', 3899], ['test-hotbar', 3903], ['test-golpe-pose', 3904], ['test-arte-armas', 3905], ['test-tactil-combate', 3906], ['test-mundo-proyectiles', 3907], ['test-mundo-equilibrio', 3908], ['test-mundo-fondo', 3909],
 ]
 
 // Estas miden TIEMPO: duraciones de animación, ventanas de golpe,

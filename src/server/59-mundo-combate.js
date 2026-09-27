@@ -270,15 +270,56 @@ function crearMonstruo(zona, monsterId, sitio) {
   }
 }
 
+// ── La entrada y el fondo de cada zona ─────────────────────────────
+//
+// Dónde aparece el jugador al entrar en una zona: en el CENTRO. Lo
+// decide la página (loadZone → sitioLibre(W/2, H/2)), y en el bosque el
+// centro está libre. La espiral de sitiosDe() empieza a 180 px de ahí,
+// así que todo lo que siembra queda junto a la entrada.
+const ENTRADA_ZONA = { x: MUNDO_ANCHO / 2, y: MUNDO_ALTO / 2 }
+
+// Lo que NO debe esperarte en la entrada. El bosque es una zona de
+// nivel 1 (ZONES.forest.levelReq) y el troll es de nivel 5: sembrado en
+// la espiral quedaba a 200 px de donde apareces, con una vista de 700,
+// y te echaba encima a tres trolls nada más entrar. Medido desde la
+// entrada (npm run nivel3), hasta nivel 3 sin parar: el robot moría 38
+// veces; al fondo, 7, lo mismo que con arañas solas (8).
+//
+// Se quedan en la zona (ZONES no se toca: de ahí salen también los
+// turnos), pero en el FONDO: el oeste, porque las salidas del bosque
+// están al sur (pueblo) y al este (ruinas) y así ni la entrada ni el
+// camino a las salidas pasan cerca. Cada sitio está a más de su vista
+// (700) + 80 de la entrada y de donde se llega por cada salida, y a
+// más de 700 del camino entre ellas: sin ir a buscarlos, no te ven. Lo
+// comprueba test-mundo-fondo contra las salidas de la página.
+//
+// Están juntos a propósito: el mundo mide 1.800×1.200 y en la mitad
+// oeste no caben tres sitios a más de 700 unos de otros y de la entrada.
+// Es la guarida: quien entra ahí, pelea con los tres.
+const AL_FONDO = { forest: ['m_troll'] }
+const FONDO = {
+  forest: [{ x: 150, y: 150 }, { x: 110, y: 1000 }, { x: 110, y: 600 }],
+}
+
+function vaAlFondo(zona, monsterId) {
+  return (AL_FONDO[zona] || []).includes(monsterId)
+}
+
 function sembrarZona(zona) {
   const z = zonaViva(zona)
   if (z.sembrada) return z
   z.sembrada = true
   const bichos = bichosDe(zona)
   if (!bichos.length) return z
+  // El reparto es el de siempre (bichos[i % n] en el sitio i de la
+  // espiral); solo cambia DÓNDE va el que tiene que ir al fondo. Así las
+  // arañas siguen exactamente donde estaban, y con ellas la calibración.
   const sitios = sitiosDe(zona, MONSTRUOS_POR_ZONA)
+  const fondo = (FONDO[zona] || []).slice()
   for (let i = 0; i < sitios.length; i++) {
-    z.monstruos.push(crearMonstruo(zona, bichos[i % bichos.length], sitios[i]))
+    const id = bichos[i % bichos.length]
+    const sitio = vaAlFondo(zona, id) && fondo.length ? fondo.shift() : sitios[i]
+    z.monstruos.push(crearMonstruo(zona, id, sitio))
   }
   return z
 }

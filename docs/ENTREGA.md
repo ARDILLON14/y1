@@ -8,7 +8,7 @@ La foto de partida está en `docs/AUDITORIA_V31.md` y no se reescribe: sirve
 para comparar. El relato largo de cada cambio, con el porqué, está en
 `CHANGELOG.md`.
 
-**Estado al cerrar:** 62 archivos de prueba · 1.729 comprobaciones · 0 fallos
+**Estado al cerrar:** 63 archivos de prueba · 1.759 comprobaciones · 0 fallos
 · ~191 s con `npm test`.
 
 ---
@@ -1422,6 +1422,84 @@ con un −42 %.
   haber mirado el de verdad). Arreglado.
 
 **PRUEBAS QUE PASAN** · 62 archivos · 1.729 comprobaciones · 0 fallos ·
+191 s.
+
+### Los trolls, al fondo del bosque (opción 2)
+
+Elegiste dejar los trolls en el bosque pero **lejos de la entrada**.
+
+**Dónde estaba la entrada, medido y no supuesto.** La página te pone
+siempre en el **centro** de la zona al cargarla (`loadZone` →
+`sitioLibre(W/2, H/2)`), y la espiral que reparte los monstruos empieza a
+180 px de ahí. O sea: los seis bichos del bosque, trolls incluidos, a unos
+200 px de donde apareces, y el troll ve a 700. **Un troll estaba a 186 px
+de la entrada.**
+
+**Qué se ha cambiado** (`59-mundo-combate.js`, solo el mundo en tiempo
+real):
+
+- `ENTRADA_ZONA` = el centro, lo mismo que dice la página.
+- `AL_FONDO = { forest: ['m_troll'] }` y `FONDO.forest` = tres sitios en
+  el **oeste**: (150, 150), (110, 600) y (110, 1000). El oeste porque las
+  salidas del bosque están al sur (pueblo) y al este (ruinas).
+- `sembrarZona` reparte igual que antes (`bichos[i % n]` en el sitio `i`);
+  solo cambia **dónde** va el troll. Las arañas siguen en **el mismo
+  píxel** (la calibración R2 se hizo con ellas ahí).
+- **No se ha tocado** `ZONES.forest` (de ahí salen también los turnos), ni
+  el troll del catálogo, ni cuántos bichos hay (3 arañas y 3 trolls).
+
+Cada troll está a más de su vista + 80 px de la entrada y de los puntos
+por los que se llega desde otra zona, y a más de su vista del camino
+entre la entrada y cada salida. **Están juntos, y es a propósito**: en la
+mitad oeste de un mapa de 1.800×1.200 no caben tres sitios a más de 700 px
+unos de otros y de la entrada. Es la guarida: quien entra, pelea con los
+tres.
+
+**Medido desde la entrada de verdad.** Hasta ahora `medir-nivel3.js`
+empezaba en (300, 300), «una esquina lejos de todo», que no es por donde
+entra nadie (y que ahora es la puerta de la guarida). Ahora empieza en el
+centro. Muertes hasta nivel 3, medianas de 12 partidas:
+
+| | turnos | mundo, trolls en la entrada (antes) | mundo, trolls al fondo (ahora) | mundo, solo arañas |
+|---|---|---|---|---|
+| descansando · solo pega | 0 | 4 | 4 | 3 |
+| descansando · robot | 0 | 9 | **1** | 1 |
+| sin parar · solo pega | 4 | 5 | **2** | 2 |
+| sin parar · robot | 2 | 38 (máx. 56) | **7** | 8 |
+
+Con los trolls al fondo, el bosque cuesta **lo mismo que si solo hubiera
+arañas**, que era el objetivo. Antes, el robot que no paraba moría 38
+veces.
+
+**Corrección a lo que dije antes.** La tabla de «Cuarto: hasta nivel 3» y
+el «3 muertes, casi todas contra trolls» se midieron desde (300, 300). Los
+números buenos son los de esta tabla.
+
+**PRUEBAS AÑADIDAS** · `test-mundo-fondo.js` (30): la zona tiene los mismos
+bichos; cada araña en su sitio de siempre; la entrada del servidor es la
+de la página; las salidas se leen **de la página** (si alguien añade una,
+la prueba lo nota) y ningún troll ve ni la entrada, ni los puntos de
+llegada, ni el camino a las salidas; y, jugando con el servidor real, 30 s
+quieto en la entrada no atraen a ningún troll, acercarse a la guarida sí,
+y un troll muerto reaparece en la guarida. **Se comprobó que detecta**: con
+`AL_FONDO` vacío salta en 16 comprobaciones.
+
+**SE SABE Y NO SE ARREGLA AQUÍ**
+
+- **Las tres arañas te atacan a la vez nada más entrar.** Están a ~200 px
+  de la entrada y ven a 620. Por eso, desde la entrada real, el robot sin
+  parar muere 8 veces incluso con solo arañas. No lo he tocado: mover las
+  arañas cambia la calibración R2 y no era lo que elegiste. Parte de esas
+  muertes es del robot, que bloquea mientras *cualquier* araña avise, y con
+  tres casi siempre hay una avisando, así que apenas pega.
+- **Entrar por un lado no funciona en la página.** `changeZone` calcula que
+  entras por el borde opuesto al que saliste, pero `loadZone` te vuelve a
+  poner en el centro justo después. Ya era así. Los trolls están lejos de
+  los dos sitios, así que arreglarlo no los acercaría.
+- **Las ruinas** (nivel 12) tienen dragón (15) y demonio (20) también junto
+  a la entrada. No lo he tocado: no era la pregunta.
+
+**PRUEBAS QUE PASAN** · 63 archivos · 1.759 comprobaciones · 0 fallos ·
 191 s.
 
 ---
