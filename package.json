@@ -28,6 +28,7 @@
     "arte": "node revisar-arte.js",
     "latencia": "node medir-latencia.js && node medir-paso.js",
     "mundo": "node medir-mundo.js",
-    "arte:ver": "node ver-arte.js"
+    "arte:ver": "node ver-arte.js",
+    "nivel3": "node medir-nivel3.js"
   }
 }

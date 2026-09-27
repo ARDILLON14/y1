@@ -1239,6 +1239,66 @@ izquierda. La prueba lo marca con la dirección exacta donde falla.
 
 ---
 
+## Sección 8 — Las dos mediciones que faltaban, y la regla R2 me para
+
+**ARCHIVOS TOCADOS** · `medir-nivel3.js` (nuevo), `package.json`
+(`npm run nivel3`). **Ni un número de combate.**
+
+**CÓMO SE MIDE** · como `banco-balance.js`: los módulos reales del
+servidor en una máquina virtual, con reloj propio y dado con semilla. Un
+guerrero recién creado hasta nivel 3, doce partidas por fila, medianas.
+Dos jugadores: el que **solo pega**, y el **robot** que bloquea cuando
+avisan y bebe por debajo de un tercio. Y dos formas de jugar:
+**descansando** entre peleas (lo que permite la recuperación del STEP 18)
+y **sin parar** (la medida del STEP 21). El medidor acepta `--src` para
+medir otro árbol, y así se midió el código de **antes del encargo**.
+
+### Turnos, antes y después: idénticos
+
+| | antes del encargo | ahora |
+|---|---|---|
+| solo pega, descansando | 35 ataques · 0 muertes | 35 · 0 |
+| robot, descansando | 36 · 0 | 36 · 0 |
+| solo pega, sin parar | 50 · **4 muertes** | 50 · 4 |
+| robot, sin parar | 43 · 2 | 43 · 2 |
+
+Lo que existía no se ha movido ni una unidad. Y las 4 muertes sin parar
+son **exactamente** las del STEP 21: el medidor reproduce lo que ya se
+sabía, que es la prueba de que mide bien.
+
+### El mundo nuevo contra los turnos: se sale del 15 %
+
+| hasta nivel 3 | turnos | mundo | desvío |
+|---|---|---|---|
+| ataques (solo pega, descansando) | 35 | 71 | **+103 %** |
+| ataques (solo pega, sin parar) | 50 | 71 | **+42 %** |
+| muertes (solo pega, sin parar) | 4 | 0 | **−100 %** |
+| tiempo de juego (solo pega, sin parar) | 75 s | 21 s | **−72 %** |
+
+**LO QUE DICEN, LEÍDO ENTERO** · el titular «el doble de ataques» engaña.
+Un golpe en el mundo son 300 ms y un turno bastante más, así que no es la
+misma unidad. Leído en tiempo y en muertes, el cambio va **al revés**:
+en el mundo se llega a nivel 3 **tres veces y media más rápido y sin
+morir nunca**, ni siquiera sin bloquear, sin beber y sin descansar.
+
+**POR QUÉ** · en turnos la araña devuelve cada golpe, uno a uno. En el
+mundo un nivel 1 la mata en 3,3 s y se lleva unos dos mordiscos, porque
+ataca cada 900 ms más 500 de aviso. El mundo es mucho más fácil.
+
+**R2 DICE QUE AQUÍ ME PARE Y LO EXPLIQUE, Y ES LO QUE HAGO.** No he tocado
+ningún número. Cualquier ajuste mueve el equilibrio, y esa decisión es
+tuya.
+
+**LO QUE PROPONGO** · igualar el **peligro**, no los clics, porque los
+clics no son comparables. Con una escala propia del mundo para el daño de
+los monstruos, igual que la arena ya tiene la suya
+(`ESCALA_ARENA = { vida: 1.4, daño: 0.65 }`, porque «una arena es un
+encuentro entero»). No es un sistema nuevo: es el mismo patrón. Medir la
+vida que se pierde por pelea en turnos y en el mundo, y ajustar **un solo
+dial del mundo** hasta que cuadren, sin tocar los turnos.
+
+---
+
 ## Lo que queda, y por qué no lo he hecho yo
 
 Los tres puntos que quedaban se han atacado. Lo que sigue abierto es más
